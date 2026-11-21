@@ -1,11 +1,11 @@
 #!/bin/bash
 # Pack the native snapshot core built for ONE platform into dist/ for the release:
-#   dist/dot_net_native-<version>-<platform>.zip   the debug and release libraries the cfg names
+#   dist/gs_net_native-<version>-<platform>.zip   the debug and release libraries the cfg names
 #   dist/SHA256SUMS                                (appended)
 #   dist/natives.json                              {version, files:{platform:{file,sha256}}} (merged)
-# Entries are addons/dot_net/native/bin/<library>, so the zip unpacks at a project root; that is
-# what dot-bootstrap fetches for a "# bootstrap-natives: dot-net <tag> native/bin" pin.
-# The library list comes from addons/dot_net/native/dot_net_native.cfg; macOS is one universal
+# Entries are addons/gs_net/native/bin/<library>, so the zip unpacks at a project root; that is
+# what gs-bootstrap fetches for a "# bootstrap-natives: gs-net <tag> native/bin" pin.
+# The library list comes from addons/gs_net/native/gs_net_native.cfg; macOS is one universal
 # dylib, packed once as macos-arm64 and once as macos-x86_64.
 #   ci/package.sh --version 0.1.29 --platform windows-x86_64
 set -euo pipefail
@@ -24,17 +24,17 @@ VERSION="${VERSION#v}"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || { echo "package.sh: --version must be semver" >&2; exit 2; }
 [[ "$PLATFORM" =~ ^(linux|windows|macos)-(x86_64|arm64)$ ]] || { echo "package.sh: --platform must be <linux|windows|macos>-<x86_64|arm64>" >&2; exit 2; }
 OS="${PLATFORM%-*}"; ARCH="${PLATFORM#*-}"
-NATIVE=addons/dot_net/native
+NATIVE=addons/gs_net/native
 # "<os>.<debug|release>[.<arch>] = "bin/..."": an arch-less key (macOS universal) serves every arch.
 # A read loop, not mapfile: the macOS runner's bash is 3.2.
 LIBS=()
-while IFS= read -r lib; do LIBS+=("$lib"); done < <(sed -nE "s/^$OS\.(debug|release)(\.$ARCH)?[[:space:]]*=[[:space:]]*\"([^\"]+)\".*/\3/p" "$NATIVE/dot_net_native.cfg")
-[ "${#LIBS[@]}" -eq 2 ] || { echo "package.sh: dot_net_native.cfg names ${#LIBS[@]} libraries for $PLATFORM, expected debug + release" >&2; exit 1; }
+while IFS= read -r lib; do LIBS+=("$lib"); done < <(sed -nE "s/^$OS\.(debug|release)(\.$ARCH)?[[:space:]]*=[[:space:]]*\"([^\"]+)\".*/\3/p" "$NATIVE/gs_net_native.cfg")
+[ "${#LIBS[@]}" -eq 2 ] || { echo "package.sh: gs_net_native.cfg names ${#LIBS[@]} libraries for $PLATFORM, expected debug + release" >&2; exit 1; }
 for lib in "${LIBS[@]}"; do
     [ -s "$NATIVE/$lib" ] || { echo "package.sh: $NATIVE/$lib missing (run $NATIVE/build.sh first)" >&2; exit 1; }
 done
 mkdir -p dist
-ZIP="dist/dot_net_native-$VERSION-$PLATFORM.zip"
+ZIP="dist/gs_net_native-$VERSION-$PLATFORM.zip"
 rm -f "$ZIP"
 "$PY" -I - "$ZIP" "${LIBS[@]/#/$NATIVE/}" <<'PY'
 import sys, zipfile

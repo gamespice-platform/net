@@ -21,7 +21,7 @@ func _ready() -> void:
 
 
 func _run() -> void:
-	_line("[b]dot-net diagnostics[/b]")
+	_line("[b]gs-net diagnostics[/b]")
 	_line("")
 
 	_section_counters()

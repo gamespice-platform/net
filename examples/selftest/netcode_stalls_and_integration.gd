@@ -652,7 +652,7 @@ func _spawning_registration(spawner: GSNetSpawner, good: PackedScene, identity_l
 
 func _spawning_allow_list(spawner: GSNetSpawner, registry: GSNetRegistry) -> void:
 	# The allow-list property: an id nobody registered cannot name anything.
-	var unknown := spawner.spawn(&"res://addons/dot_net/plugin.cfg", 1)
+	var unknown := spawner.spawn(&"res://addons/gs_net/plugin.cfg", 1)
 	_check(
 		"an unregistered id cannot be spawned",
 		not unknown.ok and unknown.error.code == GSError.CODE_INVALID

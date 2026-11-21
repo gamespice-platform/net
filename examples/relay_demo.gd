@@ -1,6 +1,6 @@
 extends Node
 
-const Relay := preload("res://addons/dot_net/testing/dot_net_udp_relay.gd")
+const Relay := preload("res://addons/gs_net/testing/gs_net_udp_relay.gd")
 
 ## The lossy UDP relay, checked against real sockets before anything is measured through it. A tool
 ## that measures loss has to be shown to inject what it says it injects, or every number taken through
@@ -23,7 +23,7 @@ func _ready() -> void:
 
 
 func _run() -> void:
-	_line("dot-net: the lossy UDP relay")
+	_line("gs-net: the lossy UDP relay")
 	_line("")
 
 	await _section_datagrams()

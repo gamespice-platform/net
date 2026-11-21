@@ -108,7 +108,7 @@ func _ready() -> void:
 
 
 func _run() -> void:
-	print("dot-net loss")
+	print("gs-net loss")
 	var errors := EngineErrors.new()
 	OS.add_logger(errors)
 

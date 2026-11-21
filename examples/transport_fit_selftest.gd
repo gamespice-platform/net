@@ -20,7 +20,7 @@ var _sections := 0
 
 func _ready() -> void:
 	GSLog.set_level(GSLog.Level.ERROR)
-	print("dot-net transport fit self-test")
+	print("gs-net transport fit self-test")
 	var cfg := GSNetConfig.new()
 	var frag_payload := cfg.mtu - FRAGMENT_HEADER
 	var worst := GSNetPacket.MAX_FRAGMENTS * frag_payload

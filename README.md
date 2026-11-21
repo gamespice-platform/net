@@ -6,7 +6,7 @@ Multiplayer netcode for Godot 4. It keeps clocks in step, packs data tightly, co
 
 ## Install
 
-Copy `addons/dot_core/` and `addons/dot_net/` into your project and enable both under **Project > Project Settings > Plugins**. Needs Godot 4.7 or newer.
+Copy `addons/gs_core/` and `addons/gs_net/` into your project and enable both under **Project > Project Settings > Plugins**. Needs Godot 4.7 or newer.
 
 ## Use
 
@@ -59,7 +59,7 @@ Change tracking, quantising, who gets what, rate limiting, interpolation and pre
 
 ## Settings
 
-`GSNetConfig` is layered like every GameSpice config (defaults, JSON, `DOT_NET_*` environment, command line). The most useful ones:
+`GSNetConfig` is layered like every GameSpice config (defaults, JSON, `GS_NET_*` environment, command line). The most useful ones:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
@@ -86,7 +86,7 @@ Change tracking, quantising, who gets what, rate limiting, interpolation and pre
 | `max_client_payload` | 4096 | Largest payload accepted from a client, in bytes. |
 | `native` | true | Use the optional native snapshot core when installed; falls back to GDScript. See [docs/native.md](docs/native.md). |
 
-The rest (stagger, workers, input margins, reconcile easing, far-entity rates) are in `addons/dot_net/core/dot_net_config.gd`, each with a comment.
+The rest (stagger, workers, input margins, reconcile easing, far-entity rates) are in `addons/gs_net/core/gs_net_config.gd`, each with a comment.
 
 ## Extending it
 

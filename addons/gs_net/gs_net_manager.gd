@@ -1,0 +1,757 @@
+@tool
+class_name GSNetManager
+extends "gs_net_manager_ack.gd"
+
+## Drives the netcode. One per network session; place it and it runs.
+##
+## Owns the tick loop and wires the pieces together (clock, registry, spawner, interest, budget, interpolator, predictor, history), each reachable and replaceable. Sends through [member send_fn], so it is transport-agnostic. Usage: README.md.
+
+func _ready() -> void:
+	if Engine.is_editor_hint():
+		return
+	GSRegistry.register(_service_name(), self)
+
+
+func _exit_tree() -> void:
+	GSRegistry.unregister_instance(_service_name(), self)
+
+
+func _service_name() -> StringName:
+	return GSRegistry.scoped_name(SERVICE, service_scope)
+
+
+## Prepares everything. Call before [method start], or let [method start] call it.
+func setup() -> GSResult:
+	if config == null:
+		config = GSNetConfig.new()
+
+	if config_file != "":
+		var loaded := config.apply_json_file(config_file)
+		if not loaded.ok:
+			return loaded
+
+	config.apply_env()
+	config.apply_cli()
+
+	var valid := config.validate()
+	if not valid.ok:
+		return valid
+
+	clock = GSNetClock.new(config.tick_rate, is_server)
+	clock.input_margin_ticks = config.input_margin_ticks
+	clock.adaptive_margin = config.adaptive_input_margin
+	clock.lead_slack_ticks = config.input_lead_slack_ticks
+
+	registry = GSNetRegistry.new(is_server, local_peer_id)
+	messages = GSNetMessageRegistry.new()
+	messages.peer_refused.connect(_on_peer_refused)
+	budget = GSNetBudget.new(config)
+	stats = GSNetStats.new()
+
+	if interest == null:
+		var distance := GSNetInterestDistance.new()
+		distance.radius = config.interest_radius
+		distance.far_every = config.far_every
+		distance.far_distance = config.far_distance
+		interest = distance
+	elif interest is GSNetInterestGrid:
+		# The config's knob, documented since the first version and applied by
+		# nothing: a host that assigned a grid got the grid's own default whatever
+		# the config said.
+		(interest as GSNetInterestGrid).cell_size = config.interest_cell_size
+
+	if is_server:
+		history = GSNetHistory.new(config)
+		_message_limiter = GSRateLimiter.new(
+			float(config.client_message_rate),
+			float(config.client_message_rate)
+		)
+	else:
+		interpolator = GSNetInterpolator.new(config)
+		predictor = GSNetPredictor.new(config)
+		_local_inputs = GSNetInput.Buffer.new(config.input_history_ticks)
+
+	_resolve_spawner()
+
+	GSLog.info(
+		CHANNEL,
+		"netcode ready",
+		{
+			"role": "server" if is_server else "client",
+			"tick_rate": config.tick_rate,
+			"snapshot_rate": config.snapshot_rate,
+			"interest": interest.strategy_name,
+		}
+	)
+
+	return GSResult.success(self)
+
+
+func _resolve_spawner() -> void:
+	if spawner_ref == null:
+		spawner_ref = GSNodeRef.of_created(&"Spawner", GSNetSpawner)
+
+	var resolved := spawner_ref.resolve(self)
+
+	if resolved.ok:
+		spawner = resolved.value as GSNetSpawner
+	else:
+		GSLog.warn(
+			CHANNEL, "could not resolve a spawner; creating one",
+			{"ref": spawner_ref.describe()}
+		)
+		spawner = GSNetSpawner.new()
+		spawner.name = "Spawner"
+		add_child(spawner)
+
+	spawner.setup(registry, config)
+	spawner.spawned.connect(func(identity: GSNetIdentity) -> void:
+		entity_spawned.emit(identity))
+	spawner.despawned.connect(func(net_id: int) -> void:
+		_forget_entity(net_id)
+		entity_despawned.emit(net_id))
+
+
+## Starts ticking.
+func start() -> GSResult:
+	if _running:
+		return GSResult.success(self)
+
+	if clock == null:
+		var prepared := setup()
+		if not prepared.ok:
+			return prepared
+
+	messages.seal()
+	_running = true
+
+	GSLog.info(
+		CHANNEL, "started", {"schema": messages.schema_hash().substr(0, 12)}
+	)
+
+	# A client announces its schema first: the server decides compatibility, so a refusal
+	# must arrive before anything else the join sends.
+	if not is_server:
+		announce_schema(1)
+	for peer_id in _peers:
+		announce_schema(peer_id)
+
+	return GSResult.success(self)
+
+
+## Sends this end's message schema to a peer, through [member send_fn]. See [method GSNetMessageRegistry.schema_payload].
+##
+## Automatic in [method add_peer] and [method start], over RELIABLE; call again once a late reliable route exists. Adopting twice is harmless. Decoding never waits for the table (wire ids derive from names); only the REQUIRED-type check does.
+func announce_schema(peer_id: int) -> bool:
+	if not send_fn.is_valid() or messages == null:
+		return false
+
+	var payload := messages.schema_payload()
+	send_fn.call(peer_id, payload, GSNetMessage.Delivery.RELIABLE)
+	stats.note_sent(payload.size(), 1)
+	GSNetCostProbe.note(&"schema", GSNetCostProbe.OUT, payload.size())
+	return true
+
+
+func _on_peer_refused(peer_id: int, error: GSError) -> void:
+	GSLog.warn(CHANNEL, "peer cannot play with this schema", {
+		"peer": peer_id, "why": error.message, "detail": error.detail,
+	})
+	peer_schema_refused.emit(peer_id, error)
+
+
+func stop() -> void:
+	_running = false
+	_peers.clear()
+	_input_buffers.clear()
+	_acks.clear()
+	_acked_rings.clear()
+	_ack_wired.clear()
+	_peer_added_tick.clear()
+	_starved_ticks.clear()
+	_last_inputs.clear()
+	_snapshot_heard_tick = -1
+	_last_snapshot_tick = 0
+	_applied_snapshot_tick = 0
+	_receiving_tick = -1
+	_receiving_mask = 0
+	_receiving_total = 0
+	_seen_ticks.clear()
+	_pending_reconcile.clear()
+
+	if registry != null:
+		registry.clear()
+	if interpolator != null:
+		interpolator.clear()
+	if predictor != null:
+		predictor.clear()
+	if history != null:
+		history.clear()
+
+	GSLog.info(CHANNEL, "stopped")
+
+
+func is_running() -> bool:
+	return _running
+
+
+## Registers a connected peer. Server side.
+func add_peer(peer_id: int) -> void:
+	if _peers.has(peer_id):
+		return
+
+	_peers.append(peer_id)
+	_input_buffers[peer_id] = GSNetInput.Buffer.new(config.input_history_ticks)
+	_acks[peer_id] = 0
+	_acked_rings.erase(peer_id)
+	_ack_wired[peer_id] = false
+	_peer_added_tick[peer_id] = _last_snapshot_tick
+	_starved_ticks[peer_id] = 0
+
+	GSLog.debug(CHANNEL, "peer added", {"peer": peer_id})
+
+	if _running:
+		announce_schema(peer_id)
+
+
+## Ticks in [param seconds], or a number no silence reaches when it is 0 (never hold).
+func _hold_ticks(seconds: float) -> int:
+	if seconds <= 0.0:
+		return 1 << 30
+	return maxi(1, ceili(seconds * config.tick_rate))
+
+
+## Removes a peer and everything it owned.
+func remove_peer(peer_id: int) -> Array[GSNetIdentity]:
+	_peers.erase(peer_id)
+	_input_buffers.erase(peer_id)
+	_acks.erase(peer_id)
+	_acked_rings.erase(peer_id)
+	_ack_wired.erase(peer_id)
+	_peer_added_tick.erase(peer_id)
+	_starved_ticks.erase(peer_id)
+	_last_inputs.erase(peer_id)
+
+	if messages != null:
+		messages.forget_peer(peer_id)
+
+	budget.forget_peer(peer_id)
+	interest.forget_peer(peer_id)
+	if _native != null:
+		_native.forget_peer(peer_id)
+
+	# Every behaviour that ever replicated to this peer holds a record of what it was believed
+	# to have; nothing else clears it, so a server churning players would leak one per behaviour.
+	for identity in registry.all():
+		for behaviour in identity.behaviours:
+			behaviour.forget_peer(peer_id)
+
+	var released := registry.take_owned_by(peer_id)
+
+	GSLog.debug(
+		CHANNEL, "peer removed", {"peer": peer_id, "entities": released.size()}
+	)
+
+	return released
+
+
+func peers() -> Array[int]:
+	return _peers.duplicate()
+
+
+func input_buffer_for(peer_id: int) -> GSNetInput.Buffer:
+	if not _input_buffers.has(peer_id):
+		_input_buffers[peer_id] = GSNetInput.Buffer.new(config.input_history_ticks)
+	return _input_buffers[peer_id]
+
+
+func local_inputs() -> GSNetInput.Buffer:
+	return _local_inputs
+
+
+func _physics_process(delta: float) -> void:
+	if Engine.is_editor_hint() or not _running or not auto_tick:
+		return
+
+	# Unconditional: rolling rates must close their window even on a frame with no
+	# traffic, or a silent peer keeps reporting its last throughput.
+	if stats != null:
+		stats.roll()
+
+	step(delta)
+
+
+## Advances by a frame's worth of time, running as many ticks as are due.
+func step(delta: float) -> void:
+	if latency.busy():
+		latency.advance(delta)
+
+	var ticks := clock.advance(delta)
+
+	for _i in range(ticks):
+		if is_server:
+			server_tick(clock.tick)
+		else:
+			client_tick(clock.tick)
+
+		ticked.emit(clock.tick)
+
+
+## Server side, read during a tick's simulate: whether this [method server_tick] ends by recording history and sending a snapshot (always
+## true when snapshots are staggered). A behaviour whose networked values only matter when sent can skip writing them on ticks this is
+## false: GameSpice Net reads them only when it records and sends.
+func snapshot_due() -> bool:
+	var period := config.ticks_per_snapshot()
+	if config.stagger_snapshots and period > 1:
+		return true
+	return _ticks_since_snapshot + 1 >= period
+
+
+## One authoritative tick: consume input, simulate, record history, maybe send.
+func server_tick(tick: int) -> void:
+	# The clock follows the tick it is driven at: a host that ticks this itself never advanced
+	# the server's clock, and every joiner synced from tick 0 and had its commands discarded as late.
+	if is_server:
+		clock.tick = maxi(clock.tick, tick)
+
+	var identities := registry.all()
+
+	var input_started := Time.get_ticks_usec()
+	for peer_id in _peers:
+		var buffer: GSNetInput.Buffer = _input_buffers[peer_id]
+		var input := buffer.take(tick)
+
+		if input == null:
+			# The consumer repeats the last input, so a lost packet keeps the player moving;
+			# past the hold it is given that input neutralised, so a blackout does not.
+			buffer.note_starved()
+			var starved: int = _starved_ticks.get(peer_id, 0) + 1
+			_starved_ticks[peer_id] = starved
+			if starved > _hold_ticks(config.starved_input_hold_sec) and _last_inputs.has(peer_id):
+				_apply_input(peer_id, (_last_inputs[peer_id] as GSNetInput).neutralised(tick), tick)
+			continue
+
+		_starved_ticks[peer_id] = 0
+		_last_inputs[peer_id] = input
+		_apply_input(peer_id, input, tick)
+
+	var step := clock.tick_duration()
+	var started := Time.get_ticks_usec()
+	_perf_server_ticks += 1
+	_charge(&"net.input", started - input_started)
+
+	# The list was taken before anything ran and a behaviour can change the world: a round
+	# re-laying its map unregisters entities that this walk would then simulate and send
+	# after clients were told they were gone (history.md 30).
+	var changed := false
+	for identity in identities:
+		if registry.get_identity(identity.net_id) != identity:
+			changed = true
+			continue
+		if not identity.can_simulate():
+			continue
+		for behaviour in identity.behaviours:
+			behaviour._net_simulate(tick, step)
+
+	var check_started := Time.get_ticks_usec()
+	for identity in identities:
+		if changed:
+			break
+		changed = registry.get_identity(identity.net_id) != identity
+	if changed:
+		identities = _still_registered(identities)
+
+	var period := config.ticks_per_snapshot()
+	var simulated := Time.get_ticks_usec()
+	_perf_server_sim_usec += simulated - started
+	_charge(&"net.check", simulated - check_started)
+
+	# Staggered: some peers every tick, each on its own phase. See
+	# [member GSNetConfig.stagger_snapshots].
+	if config.stagger_snapshots and period > 1:
+		history.record(identities, tick)
+		_charge(&"net.history", Time.get_ticks_usec() - simulated)
+		_send_snapshots(tick, identities, posmod(tick, period), period)
+		_perf_server_send_usec += Time.get_ticks_usec() - simulated
+		return
+
+	_ticks_since_snapshot += 1
+
+	if _ticks_since_snapshot >= period:
+		_ticks_since_snapshot = 0
+		history.record(identities, tick)
+		_charge(&"net.history", Time.get_ticks_usec() - simulated)
+		_send_snapshots(tick, identities)
+		_perf_server_send_usec += Time.get_ticks_usec() - simulated
+
+
+## Adds [param usec] to one of server_tick's own sections (perf_counters' server_input/check/history_usec), and to [GSFrameCost] while a profiler records.
+func _charge(section: StringName, usec: int) -> void:
+	match section:
+		&"net.input":
+			_perf_server_input_usec += usec
+		&"net.check":
+			_perf_server_check_usec += usec
+		&"net.history":
+			_perf_server_history_usec += usec
+	GSFrameCost.add_usec(section, usec)
+
+
+## Those of [param identities] still registered as themselves. An entity registered during
+## the tick is not added: it is in the next tick's list, as it always was.
+func _still_registered(identities: Array[GSNetIdentity]) -> Array[GSNetIdentity]:
+	var out: Array[GSNetIdentity] = []
+	for identity in identities:
+		if registry.get_identity(identity.net_id) == identity:
+			out.append(identity)
+	return out
+
+
+## Hands an input to the entities a peer owns.
+##
+## Sanitised first, on the server, because everything in it came from a client.
+func _apply_input(peer_id: int, input: GSNetInput, tick: int) -> void:
+	input.sanitise(config.tick_rate)
+
+	for identity in registry.owned_by(peer_id):
+		for behaviour in identity.behaviours:
+			if behaviour.has_method("_net_apply_input"):
+				behaviour.call("_net_apply_input", input, tick)
+
+
+## One client tick: sample input, predict, interpolate.
+func client_tick(tick: int) -> void:
+	if not clock.is_synced():
+		# Predicting before the clock is aligned produces inputs stamped with ticks
+		# the server has already passed, every one of which is discarded.
+		return
+
+	flush_reconcile()
+	var started := Time.get_ticks_usec()
+	predictor.predict(registry.predicted(), tick, clock.tick_duration())
+	_perf_predict_usec += Time.get_ticks_usec() - started
+	_perf_client_ticks += 1
+
+
+## One predicted tick for a host that records its own command and simulates it: the snapshots read since the last tick are reconciled first ([method flush_reconcile]), then every predicted entity is handed [param input] and simulated for [param tick].
+## Through the predictor, not around it: otherwise [member GSNetConfig.skip_matching_replays] has nothing to match and [method perf_counters] reports no predict time. (API 10.)
+## [param input] is only rounded to what the server decodes ([method GSNetInput.round_trip]), never neutralised: the prediction hold predicts on a copy, so the input may be sent before or after this call and the server, the buffered history and every replay run the same command.
+func predict_tick(tick: int, input: GSNetInput = null) -> void:
+	if not clock.is_synced():
+		return
+	flush_reconcile()
+	var started := Time.get_ticks_usec()
+	# Rounded in place: the server decodes exactly this whether it was sent before or after,
+	# and the buffered input is this object, so the replays run on the rounded one too.
+	if input != null and config.predict_wire_input:
+		input.round_trip()
+	# The hold predicts on a neutral copy and leaves the caller's input as sent: neutralised in
+	# place, a caller that sent first had the server run the live one and the replays the held one.
+	var predicted := input
+	if input != null and _snapshot_heard_tick >= 0 \
+			and tick - _snapshot_heard_tick > _hold_ticks(config.prediction_hold_sec):
+		predicted = input.neutralised(input.tick)
+		_held_ticks += 1
+	predictor.predict(registry.predicted(), tick, clock.tick_duration(), predicted)
+	_perf_predict_usec += Time.get_ticks_usec() - started
+	_perf_client_ticks += 1
+
+
+## Running totals of what a client spends on the network side of a frame, in wall-clock microseconds, for a readout or a benchmark to difference between two reads.
+##
+## [code]snapshot_usec[/code], [code]reconcile_usec[/code], [code]replayed_ticks[/code] (grows with latency), [code]predict_usec[/code], [code]client_ticks[/code].
+func perf_counters() -> Dictionary:
+	return {
+		&"snapshots": _perf_snapshots,
+		&"snapshot_usec": _perf_snapshot_usec,
+		&"reconciles": _perf_reconciles,
+		&"reconcile_usec": _perf_reconcile_usec,
+		&"replayed_ticks": _perf_replayed_ticks,
+		# Reconciles that found the prediction already right and replayed nothing
+		# (GSNetConfig.skip_matching_replays); counted in `reconciles` too.
+		&"skipped": predictor.skipped() if predictor != null else 0,
+		&"client_ticks": _perf_client_ticks,
+		&"predict_usec": _perf_predict_usec,
+		# How far the prediction runs ahead of the newest snapshot: what each replay re-runs.
+		&"lead_ticks": clock.input_tick() - clock.received_tick() if clock != null else 0,
+		# Server side: ticks run, time simulating them (the game's tick runs inside a
+		# behaviour's _net_simulate), and time recording history and sending snapshots.
+		&"server_ticks": _perf_server_ticks,
+		&"server_sim_usec": _perf_server_sim_usec,
+		&"server_send_usec": _perf_server_send_usec,
+		# Sections of server_tick: input taken and applied (before server_sim_usec), the
+		# still-registered check (inside server_sim_usec), the rewind history record (inside server_send_usec).
+		&"server_input_usec": _perf_server_input_usec,
+		&"server_check_usec": _perf_server_check_usec,
+		&"server_history_usec": _perf_server_history_usec,
+		# Inside server_send_usec (inline path; the native and pooled paths count prepare, reads
+		# and thaw only): freeze + interest prepare, the shared property reads, per-peer relevance
+		# and ranking, per-peer build + send, thaw.
+		&"snap_prepare_usec": _ph_prepare_usec,
+		&"snap_reads_usec": _ph_reads_usec,
+		&"snap_interest_usec": _ph_interest_usec,
+		&"snap_build_usec": _ph_build_usec,
+		&"snap_thaw_usec": _ph_thaw_usec,
+		&"snap_snapshots": _ph_snapshots,
+		# Native and pooled paths: the core's begin (property reads), peer interest and ranking, handing the lists over, the fork-to-join build, and sending what came back.
+		&"snap_begin_usec": _ph_begin_usec,
+		&"snap_nint_usec": _snapshot_interest_usec_total,
+		&"snap_submit_usec": _snapshot_submit_usec_total,
+		&"snap_join_usec": _snapshot_join_usec_total,
+		&"snap_apply_usec": _snapshot_apply_usec_total,
+	}
+
+
+## Applies interpolation. Call from [method Node._process], not the tick loop.
+##
+## [param alpha] is how far this frame sits into the current tick; left negative it is [method GSNetClock.render_alpha], which needs the engine's physics rate equal to the tick rate. Interpolating on the tick would quantise remote motion to the tick rate. A suite that steps by hand passes 0.0.
+func interpolate_frame(alpha: float = -1.0) -> void:
+	if is_server or interpolator == null or not clock.is_synced():
+		return
+
+	flush_reconcile()
+
+	if alpha < 0.0:
+		alpha = clock.render_alpha()
+
+	# The buffer follows its target at a bounded rate, on the frame's own time, so it
+	# never moves the render time backwards. See GSNetInterpolator._target_snapshots.
+	var now_usec := Time.get_ticks_usec()
+	var elapsed := 0.0 if _last_frame_usec == 0 else float(now_usec - _last_frame_usec) / 1e6
+	_last_frame_usec = now_usec
+	interpolator.advance(minf(elapsed, 0.25))
+
+	# The RECEIVE timeline, not the server's tick: the delay is counted back from the newest
+	# snapshot held. Alpha is -1 to 2 because it carries a slip (see GSNetClock.render_alpha)
+	# plus what re-anchoring moved that the drawing has not followed yet (receive_slip).
+	var server_tick_now := float(clock.received_tick()) + clampf(alpha, -1.0, 2.0) \
+		+ clock.receive_slip()
+
+	interpolator.apply_frame(registry.all(), server_tick_now)
+
+
+## Applies a snapshot payload. Client side.
+func receive_snapshot(payload: PackedByteArray) -> GSResult:
+	if latency.delaying():
+		latency.hold(_apply_snapshot.bind(payload))
+		return GSResult.success(true)
+	return _apply_snapshot(payload)
+
+
+func _apply_snapshot(payload: PackedByteArray) -> GSResult:
+	var started := Time.get_ticks_usec()
+	var result := _receive_snapshot(payload)
+	if result.ok:
+		_snapshot_heard_tick = clock.input_tick()
+	_perf_snapshot_usec += Time.get_ticks_usec() - started
+	_perf_snapshots += 1
+	return result
+
+
+## Reconciles every predicted entity against the newest snapshot read for it since the last flush. Needed only with [member GSNetConfig.reconcile_once_per_frame]; [method client_tick] and [method interpolate_frame] call it.
+func flush_reconcile() -> void:
+	if _pending_reconcile.is_empty():
+		return
+	var waiting := _pending_reconcile
+	_pending_reconcile = {}
+	for net_id: int in waiting:
+		var entry: Array = waiting[net_id]
+		var identity: GSNetIdentity = entry[0]
+		# Unregistered (or freed) since the snapshot: nothing left to correct.
+		if not is_instance_valid(identity) or registry.get_identity(net_id) != identity:
+			continue
+		_reconcile(identity, int(entry[1]), entry[2])
+
+
+func _forget_entity(net_id: int) -> void:
+	_pending_reconcile.erase(net_id)
+	if interpolator != null:
+		interpolator.forget(net_id)
+	if predictor != null:
+		predictor.forget(net_id)
+	if history != null:
+		history.forget(net_id)
+
+
+## Sends a message to a peer, or to everyone when [param peer_id] is 0.
+func send(message: GSNetMessage, peer_id: int = 0) -> GSResult:
+	if not send_fn.is_valid():
+		return GSResult.fail(
+			GSError.CODE_STATE, "No send function is set."
+		)
+
+	var writer := GSNetWriter.new()
+	var encoded := messages.encode(message, writer)
+
+	if not encoded.ok:
+		return encoded
+
+	var payload := writer.to_bytes()
+	send_fn.call(peer_id, payload, messages.delivery_of(message.type_name()))
+	stats.note_sent(payload.size(), 1)
+	GSNetCostProbe.note(message.type_name(), GSNetCostProbe.OUT, payload.size())
+
+	return GSResult.success(payload.size())
+
+
+## Decodes and dispatches an incoming message payload.
+##
+## Rate-limited per peer on the server: every client message costs work.
+func receive(payload: PackedByteArray, from_peer_id: int) -> GSResult:
+	if latency.delaying():
+		latency.hold(_receive_now.bind(payload, from_peer_id))
+		return GSResult.success(true)
+	return _receive_now(payload, from_peer_id)
+
+
+func _receive_now(payload: PackedByteArray, from_peer_id: int) -> GSResult:
+	stats.note_received(payload.size())
+
+	if is_server:
+		if payload.size() > config.max_client_payload:
+			stats.note_decode_failure()
+			return GSResult.fail(
+				GSError.CODE_INVALID,
+				"Payload from a client is too large.",
+				"%d bytes from peer %d" % [payload.size(), from_peer_id]
+			)
+
+		if not _message_limiter.allow(from_peer_id):
+			stats.note_rate_limited()
+			return GSResult.fail(
+				GSError.CODE_RATE_LIMITED,
+				"Peer is sending too fast.",
+				"peer %d" % from_peer_id
+			)
+
+	var reader := GSNetReader.new(payload)
+	var decoded := messages.decode(reader, from_peer_id, is_server)
+
+	if not decoded.ok:
+		if decoded.code() == GSError.CODE_FORBIDDEN:
+			stats.note_direction_violation()
+		elif decoded.code() != GSError.CODE_VERSION:
+			# A refused schema is not a decode failure: it decoded, and said the two ends
+			# cannot play. It is reported through `peer_schema_refused`, not as noise.
+			stats.note_decode_failure()
+		return decoded
+
+	# Null is a message there is nothing to hand a game: a peer's schema table, a type this
+	# end does not have, or anything from a peer whose schema was refused. Not an error --
+	# a peer one build ahead sends exactly this, and must be able to.
+	if decoded.value == null:
+		GSNetCostProbe.note(&"schema", GSNetCostProbe.IN, payload.size())
+		return GSResult.success(false)
+
+	GSNetCostProbe.note(decoded.value.type_name(), GSNetCostProbe.IN, payload.size())
+	messages.dispatch(decoded.value)
+	return GSResult.success(true)
+
+
+func describe() -> Dictionary:
+	var d := {
+		"role": "server" if is_server else "client",
+		"running": _running,
+		"peers": _peers.size(),
+		"entities": registry.count() if registry != null else 0,
+		"clock": clock.describe() if clock != null else {},
+		"stats": stats.describe() if stats != null else {},
+		"interest": interest.describe() if interest != null else {},
+	}
+
+	if not is_server:
+		d["held_ticks"] = _held_ticks
+
+	if is_server:
+		d["snapshots_split"] = snapshots_split
+		d["largest_part_bytes"] = largest_part_bytes
+		d["mtu"] = config.mtu if config != null else 0
+		d["unchanged_listed"] = unchanged_listed
+		d["unchanged_bytes_saved"] = unchanged_bytes_saved
+		d["input_leads_sent"] = input_leads_sent
+		d["snapshot_threads"] = {
+			"configured": config.snapshot_workers if config != null else 0,
+			"why_inline": _snapshot_threads_reason,
+			"pooled": _snapshot_pooled,
+			"last_peers": _snapshot_pooled_peers,
+			"last_tasks": _snapshot_pooled_workers,
+			"last_join_usec": _snapshot_join_usec,
+			"mean_prep_usec": _snapshot_prep_usec_total / maxi(1, _snapshot_pooled),
+			"mean_join_usec": _snapshot_join_usec_total / maxi(1, _snapshot_pooled),
+			"mean_apply_usec": _snapshot_apply_usec_total / maxi(1, _snapshot_pooled),
+		}
+
+	if interpolator != null:
+		d["interpolation"] = interpolator.describe()
+	if predictor != null:
+		d["prediction"] = predictor.describe()
+		if config != null and config.reconcile_once_per_frame:
+			d["prediction"]["coalesced"] = _reconciles_coalesced
+	if history != null:
+		d["lag_compensation"] = history.describe()
+
+	return d
+
+
+## Lines for a `net_status` console command.
+func describe_lines() -> PackedStringArray:
+	var out := PackedStringArray()
+
+	out.append("role       %s" % ("server" if is_server else "client"))
+	out.append("entities   %d" % (registry.count() if registry != null else 0))
+
+	if clock != null:
+		out.append("tick       %d (%s)" % [
+			clock.tick, "synced" if clock.is_synced() else "SYNCING"
+		])
+		out.append("rtt        %d ms, jitter %d ms" % [
+			int(clock.rtt_ms()), int(clock.jitter_ms())
+		])
+		if not is_server:
+			out.append("lead       %s" % clock.describe_lead())
+
+	if is_server and config != null:
+		out.append("snapshots  %d split, largest part %d B of %d" % [
+			snapshots_split, largest_part_bytes, config.mtu
+		])
+		out.append("unchanged  %d listed, %d B of headers saved" % [
+			unchanged_listed, unchanged_bytes_saved
+		])
+		out.append("leads      %d sent to clients" % input_leads_sent)
+		if _native_note != "":
+			out.append("native     %s" % _native_note)
+		if config.snapshot_workers != 0:
+			var n := maxi(1, _snapshot_pooled)
+			out.append("threads    %d asked, %d snapshots pooled%s; last %d peers in %d tasks; mean us: prep %d, join %d, apply %d" % [
+				config.snapshot_workers, _snapshot_pooled,
+				(", inline: " + _snapshot_threads_reason) if _snapshot_threads_reason != "" else "",
+				_snapshot_pooled_peers, _snapshot_pooled_workers,
+				_snapshot_prep_usec_total / n, _snapshot_join_usec_total / n, _snapshot_apply_usec_total / n,
+			])
+			for line in GSParallel.describe_lines():
+				out.append("  " + line)
+
+	if stats != null:
+		out.append("")
+		out.append_array(stats.describe_lines())
+
+	if interpolator != null:
+		out.append("")
+		out.append("interpolation:")
+		var interp := interpolator.describe()
+		for key in interp:
+			out.append("  %-18s %s" % [str(key), str(interp[key])])
+
+	if predictor != null:
+		out.append("")
+		out.append("prediction:")
+		var pred := predictor.describe()
+		for key in pred:
+			out.append("  %-18s %s" % [str(key), str(pred[key])])
+
+	if budget != null and is_server:
+		out.append("")
+		out.append_array(budget.describe_lines())
+
+	return out
+

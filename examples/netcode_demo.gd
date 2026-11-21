@@ -18,7 +18,7 @@ func _ready() -> void:
 func _run() -> void:
 	_test_config_sizing()
 	_test_count_limits()
-	print("dot-net self-test")
+	print("gs-net self-test")
 	print("")
 
 	_test_wire()

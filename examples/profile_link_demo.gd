@@ -19,7 +19,7 @@ func _ready() -> void:
 
 
 func _run() -> void:
-	print("dot-net profile link demo")
+	print("gs-net profile link demo")
 	_wipe()
 	_test_command_route()
 	_test_refused()
@@ -46,7 +46,7 @@ func _run() -> void:
 
 
 func _mk_set() -> GSProfileSet:
-	var s := GSProfileSet.create("dot-npc", "mygame", "npc", [
+	var s := GSProfileSet.create("gs-npc", "mygame", "npc", [
 		GSProfileSet.field("health", "int", 100, {"min": 1, "max": 1000}),
 		GSProfileSet.field("speed", "float", 3.0, {"min": 0.0, "max": 50.0}),
 	])
@@ -55,15 +55,15 @@ func _mk_set() -> GSProfileSet:
 
 
 func _wipe() -> void:
-	for f in ["addons/dot-npc/npc/zombie.yml"]:
+	for f in ["addons/gs-npc/npc/zombie.yml"]:
 		DirAccess.remove_absolute(BASE + "/" + f)
 
 
 ## A server whose peers 11 (admin) and 12 (player) are connected, and `clients` clients.
 func _world(clients: Array = [11, 12]) -> Dictionary:
 	_wipe()
-	DirAccess.make_dir_recursive_absolute(BASE + "/addons/dot-npc/npc")
-	var f := FileAccess.open(BASE + "/addons/dot-npc/npc/zombie.yml", FileAccess.WRITE)
+	DirAccess.make_dir_recursive_absolute(BASE + "/addons/gs-npc/npc")
+	var f := FileAccess.open(BASE + "/addons/gs-npc/npc/zombie.yml", FileAccess.WRITE)
 	f.store_string("health: 50\n")
 	f.close()
 	_queue.clear()

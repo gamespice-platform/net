@@ -9,7 +9,7 @@
 - a physics query against geometry only one side has loaded;
 - iteration over an unordered collection whose order differs (which is why `GSNetSnapshot.net_ids()` is sorted).
 
-Godot's physics is not deterministic across platforms; a game needing exact reconciliation simulates movement itself (the demo's `Movement` does, and so does dot-player-controller's motor).
+Godot's physics is not deterministic across platforms; a game needing exact reconciliation simulates movement itself (the demo's `Movement` does, and so does gs-player-controller's motor).
 
 `GSNetPredictor.correction_rate()` is the number that tells you. Near zero means the two agree. Consistently high means the simulation is not deterministic, and no amount of smoothing will fix that; it will just hide it badly.
 

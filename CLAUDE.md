@@ -2,15 +2,15 @@
 
 Multiplayer netcode for Godot 4: tick synchronisation, a bit-packed wire format, declarative state replication, snapshot interpolation, client-side prediction with server reconciliation, lag-compensated rewind, and pluggable interest management.
 
-**The distributable is `addons/dot_net/`.** It requires [GameSpice Core](../dot-core) and does not depend on dot-server: a game can use dot-net over Godot's raw multiplayer, over dot-core's transports, or over anything else that moves bytes. It owns no socket and no client-to-server channel.
+**The distributable is `addons/gs_net/`.** It requires [GameSpice Core](../gs-core) and does not depend on gs-server: a game can use gs-net over Godot's raw multiplayer, over gs-core's transports, or over anything else that moves bytes. It owns no socket and no client-to-server channel.
 
-Also requires **GameSpice Profile** (`GSProfileSet`, `GSProfile`, `GSProfileRuntime`, split from GameSpice Core): link `addons/dot_profile` next to `addons/dot_core`.
+Also requires **GameSpice Profile** (`GSProfileSet`, `GSProfile`, `GSProfileRuntime`, split from GameSpice Core): link `addons/gs_profile` next to `addons/gs_core`.
 
 ```bash
-ln -s ../../dot-core/addons/dot_core addons/dot_core
+ln -s ../../gs-core/addons/gs_core addons/gs_core
 ```
 
-Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is specific to dot-net. The reasoning is in [docs/](docs/README.md).
+Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is specific to gs-net. The reasoning is in [docs/](docs/README.md).
 
 ## Read before
 
@@ -29,17 +29,17 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 
 | Path | What |
 | --- | --- |
-| `addons/dot_net/dot_net_manager.gd` | tick loop, snapshot receive, message routing; extends `dot_net_manager_receive.gd` < `_send.gd` < `_wire.gd` < `_state.gd` (snapshot receive and entity apply, snapshot send, wire build, state) |
-| `addons/dot_net/core/` | `GSNetClock` (three timelines: read it first), `GSNetConfig` (all tuning; `describe_budget()`) |
-| `addons/dot_net/wire/` | writer (bit packing, quantisation), reader (the untrusted side), messages, the registry (derived ids, framing, schema exchange), packets (batching, fragmentation) |
-| `addons/dot_net/replication/` | `GSNetVar`, `GSNetIdentity`, `GSNetBehaviour` (what a game subclasses most), registry (ids never reused), spawner (prefab allow-list, factories) |
-| `addons/dot_net/snapshot/` | `GSNetSnapshot`, `GSNetInterpolator` |
-| `addons/dot_net/prediction/` | `GSNetInput` and its buffer, `GSNetPredictor` |
-| `addons/dot_net/lagcomp/` | `GSNetHistory`: rewind the world to what the shooter saw |
-| `addons/dot_net/interest/` | base, all, distance, grid |
-| `addons/dot_net/bandwidth/`, `stats/` | per-peer budget with a starvation-bounded accumulator; `GSNetStats` |
-| `addons/dot_net/profile/` | `GSNetProfileLink`: opt-in carrier for GameSpice Core's `GSProfileRuntime` (admin requests up, rows down, late-joiner snapshot); `attach` before start is the only switch; `GSNetCostProbe`: reports bytes per message class (messages, snapshots, schema) to GameSpice Profiler's `GSProfilerNetCost` when that addon is installed and recording (looked up by name, no dependency; one bool test otherwise) |
-| `addons/dot_net/testing/dot_net_udp_relay.gd` | a lossy UDP relay for tests. No `class_name`: preload by path |
+| `addons/gs_net/gs_net_manager.gd` | tick loop, snapshot receive, message routing; extends `gs_net_manager_receive.gd` < `_send.gd` < `_wire.gd` < `_state.gd` (snapshot receive and entity apply, snapshot send, wire build, state) |
+| `addons/gs_net/core/` | `GSNetClock` (three timelines: read it first), `GSNetConfig` (all tuning; `describe_budget()`) |
+| `addons/gs_net/wire/` | writer (bit packing, quantisation), reader (the untrusted side), messages, the registry (derived ids, framing, schema exchange), packets (batching, fragmentation) |
+| `addons/gs_net/replication/` | `GSNetVar`, `GSNetIdentity`, `GSNetBehaviour` (what a game subclasses most), registry (ids never reused), spawner (prefab allow-list, factories) |
+| `addons/gs_net/snapshot/` | `GSNetSnapshot`, `GSNetInterpolator` |
+| `addons/gs_net/prediction/` | `GSNetInput` and its buffer, `GSNetPredictor` |
+| `addons/gs_net/lagcomp/` | `GSNetHistory`: rewind the world to what the shooter saw |
+| `addons/gs_net/interest/` | base, all, distance, grid |
+| `addons/gs_net/bandwidth/`, `stats/` | per-peer budget with a starvation-bounded accumulator; `GSNetStats` |
+| `addons/gs_net/profile/` | `GSNetProfileLink`: opt-in carrier for GameSpice Core's `GSProfileRuntime` (admin requests up, rows down, late-joiner snapshot); `attach` before start is the only switch; `GSNetCostProbe`: reports bytes per message class (messages, snapshots, schema) to GameSpice Profiler's `GSProfilerNetCost` when that addon is installed and recording (looked up by name, no dependency; one bool test otherwise) |
+| `addons/gs_net/testing/gs_net_udp_relay.gd` | a lossy UDP relay for tests. No `class_name`: preload by path |
 | `examples/` | `netcode_demo`, `diagnostics_demo`, `loss_demo`, `relay_demo`, `transport_fit_selftest`; `netcode_demo`'s sections live in `examples/selftest/` as a chain of scripts (`netcode_base` < `netcode_tests` < `netcode_messages_and_replication` to `netcode_unchanged_and_lossy_lead`), each extending the one before, so a helper sits in the file of its first caller or above |
 
 ## Running and testing
@@ -51,7 +51,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 
 ## Extension points
 
-A game should never need to fork dot-net. Family rules: [extension-points.md](../../docs/extension-points.md).
+A game should never need to fork gs-net. Family rules: [extension-points.md](../../docs/extension-points.md).
 
 | To change | Subclass / assign | Notes |
 | --- | --- | --- |
@@ -79,7 +79,7 @@ Short forms; the reasoning is in the linked file.
 - A client AHEAD is smoothed by scaling tick duration; a client BEHIND by more than the input margin jumps forward at once. Never smooth "behind". [timelines](docs/timelines.md#drift-and-catch-up)
 - A client runs as many ticks a second as its server holds (`GSNetClock._pace`, `server_pace()`): the median of three 1.5 s windows of the quickest snapshot arrivals against unscaled local time, followed below 0.97 of the rate and let go above 0.985, so a nominal server changes nothing. At the nominal rate against an overloaded server (owner's sim host, 58-61 of 66) the input lead ran away until it snapped and every reconcile replayed it (35-82 ticks). Local time, the tick step, credited stalls and flight ticks run at the pace; the simulated step stays `tick_duration()`. [timelines](docs/timelines.md#a-server-slower-than-its-rate)
 - The clock credits the time the engine drops past its step cap from the wall clock (`note_engine_frame`, `note_engine_time`), to local time, the tick and the receive timeline at once, before the snapshots after it are read; only while one `advance` a physics step drives it (a hand-driven harness is a stall by the wall clock) and no server's clock lives in the process (it stalled too: `server_in_process()`). A test that fakes the engine clears `follow_engine_time` and calls them itself. [timelines](docs/timelines.md#time-the-engine-drops)
-- A client that adopts a server's tick rate calls `GSNetClock.adopt_tick_rate(rate)` (API 7), not `Engine.physics_ticks_per_second = rate`: it also raises `max_physics_steps_per_frame` to a quarter second of ticks (never lowers it), because the engine's default 8 is 62.5 ms at 128 Hz and a client under 16 fps then runs fewer ticks than the server. A game on an older shell inlines the same rule behind `GSAddonApi.build_level("dot_net") >= 7`.
+- A client that adopts a server's tick rate calls `GSNetClock.adopt_tick_rate(rate)` (API 7), not `Engine.physics_ticks_per_second = rate`: it also raises `max_physics_steps_per_frame` to a quarter second of ticks (never lowers it), because the engine's default 8 is 62.5 ms at 128 Hz and a client under 16 fps then runs fewer ticks than the server. A game on an older shell inlines the same rule behind `GSAddonApi.build_level("gs_net") >= 7`.
 - Steered by the reports, a clock at or behind the newest snapshot jumps (`floor_count`); nothing in that floor comes from the round trip, which holds the stall. [timelines](docs/timelines.md#the-input-lead-the-server-reports)
 - Once the server reports the input lead (`FEATURE_INPUT_LEAD`), the input timeline steers to it every frame (up to 12% fast; 5% slow, 12% while the latest report is more than 2 ticks past the slack; a jump only past 0.5 s of deficit; a frame far longer than its window is discounted from the reports, `_discount_long_frame`); the discount reaches every held command by slot, because a credited stall over `LEAD_HISTORY` (512) ticks, 4 s at 128 Hz, moves `tick` past the window and used to leave the stalled commands' lead undiscounted: the clock jumped the stall ahead and snapped back, measured against when each command was SENT (`_lead_at`), never against now; the receive timeline is held to real time meanwhile (`_receive_excess`). Stamp commands from `input_tick()`; a host stamping its own lead clears `FEATURE_INPUT_LEAD` (the cap only stops a runaway). [timelines](docs/timelines.md#the-input-lead-the-server-reports)
 - `SNAP_THRESHOLD_SECONDS` is a duration, never a tick count. [timelines](docs/timelines.md#drift-and-catch-up)

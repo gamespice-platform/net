@@ -512,7 +512,7 @@ func _native_toggle_resends(loaded: bool) -> void:
 
 
 func _native_library_for_platform() -> void:
-	var cfg := OS.get_user_data_dir().path_join("dot_net_native_probe.cfg")
+	var cfg := OS.get_user_data_dir().path_join("gs_net_native_probe.cfg")
 	var probe := ConfigFile.new()
 	probe.set_value("libraries", "never.x86_64", "bin/a.so")
 	probe.set_value("libraries", "%s.x86_64" % OS.get_name().to_lower(), "bin/missing.so")

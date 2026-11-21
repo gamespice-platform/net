@@ -14,7 +14,7 @@ var _sections := 0
 
 func _ready() -> void:
 	GSLog.set_level(GSLog.Level.ERROR)
-	print("dot-net visibility self-test")
+	print("gs-net visibility self-test")
 	_rows()
 	_rooms()
 	_bsp()

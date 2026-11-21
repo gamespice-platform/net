@@ -13,7 +13,7 @@ var _sections := 0
 
 func _ready() -> void:
 	GSLog.set_level(GSLog.Level.ERROR)
-	print("dot-net cost probe self-test")
+	print("gs-net cost probe self-test")
 	_absent()
 	_bound()
 	print("%d sections, %d passed, %d failed" % [_sections, _passed, _failed])

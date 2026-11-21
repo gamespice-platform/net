@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Export a BSP's cluster PVS for tools/visibility_bench.gd, in metres and Godot axes.
 
-    python3 tools/bsp_vis_export.py <dot-map-convert dir> <map.bsp> <out.json> [--scale=0.01905] [--points=400] [--seed=1]
+    python3 tools/bsp_vis_export.py <gs-map-convert dir> <map.bsp> <out.json> [--scale=0.01905] [--points=400] [--seed=1]
 
-The arrays are what dot-map-convert's `vis.attach` packs into a converted map's `vis` record (and
+The arrays are what gs-map-convert's `vis.attach` packs into a converted map's `vis` record (and
 what `GSNetVisibility.bake_bsp` reads), plus the spawns and `points`: random standing positions
 (a random empty leaf, dropped to the floor, 36 units up), the bench's positions. Needs numpy (the
-dot-map-convert reader does). A map converted with a `vis` record needs none of this:
-`GSNetVisibility.from_dot_map_mesh` reads it directly.
+gs-map-convert reader does). A map converted with a `vis` record needs none of this:
+`GSNetVisibility.from_gs_map_mesh` reads it directly.
 """
 import base64
 import json
@@ -26,7 +26,7 @@ def main(argv):
     count = int(opts.get("points", "400"))
     rng = random.Random(int(opts.get("seed", "1")))
     sys.path.insert(0, convert)
-    from dotbsp import reader, vis  # noqa: E402
+    from gsbsp import reader, vis  # noqa: E402
 
     b = reader.Bsp(bsp_path)
     b.load()
