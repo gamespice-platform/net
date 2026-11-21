@@ -27,7 +27,7 @@ func _test_render_delay() -> void:
 		# Snapshots only. The reliable route carries the schema table the manager
 		# announces as it adds a peer, and counting it here would move which snapshot
 		# the one-in-five loss lands on.
-		if peer_id != 2 or d != DotNetMessage.Delivery.UNRELIABLE:
+		if peer_id != 2 or d != GSNetMessage.Delivery.UNRELIABLE:
 			return
 		sent[0] += 1
 		if lossy[0] and sent[0] % 5 == 0:
@@ -42,12 +42,12 @@ func _test_render_delay() -> void:
 
 	# Somebody else's entity — peer 3's — so this client interpolates it, never predicts it.
 	var spawned := server_d.spawner.spawn(&"player", 3, Transform3D.IDENTITY, 0)
-	var server_entity: DotNetIdentity = spawned.value if spawned.ok else null
+	var server_entity: GSNetIdentity = spawned.value if spawned.ok else null
 	var mirrored := client_d.spawner.spawn_remote(
 		&"player", server_entity.net_id if server_entity != null else 0, 3,
 		Transform3D.IDENTITY, 0
-	) if server_entity != null else DotResult.fail(DotError.CODE_INVALID, "no server entity")
-	var remote: DotNetIdentity = mirrored.value if mirrored.ok else null
+	) if server_entity != null else GSResult.fail(GSError.CODE_INVALID, "no server entity")
+	var remote: GSNetIdentity = mirrored.value if mirrored.ok else null
 	_check(
 		"a remote entity on a 128-tick client (setup %s, interpolated %s)"
 			% [ok_setup, remote != null and not remote.is_predicted()],
@@ -74,7 +74,7 @@ func _test_render_delay() -> void:
 	_sections_completed += 1
 
 
-func _free_delay_managers(server_d: DotNetManager, client_d: DotNetManager) -> void:
+func _free_delay_managers(server_d: GSNetManager, client_d: GSNetManager) -> void:
 	server_d.stop()
 	client_d.stop()
 	remove_child(server_d)
@@ -84,7 +84,7 @@ func _free_delay_managers(server_d: DotNetManager, client_d: DotNetManager) -> v
 
 
 func _run_render_delay_legs(
-		server_d: DotNetManager, client_d: DotNetManager, client_move: Movement,
+		server_d: GSNetManager, client_d: GSNetManager, client_move: Movement,
 		delivered: Array[PackedByteArray], lossy: Array, worst: Array) -> Array[Dictionary]:
 	var interp := client_d.interpolator
 	var step_x := 10.0 / 128.0
@@ -126,15 +126,15 @@ func _run_render_delay_legs(
 	return counts
 
 
-func _delay_manager(as_server: bool) -> DotNetManager:
-	var m := DotNetManager.new()
+func _delay_manager(as_server: bool) -> GSNetManager:
+	var m := GSNetManager.new()
 	m.name = "DelayServer" if as_server else "DelayClient"
 	m.is_server = as_server
 	m.service_scope = &"delay_server" if as_server else &"delay_client"
 	m.local_peer_id = 1 if as_server else 2
 	m.auto_tick = false
 	m.config_file = ""
-	m.config = DotNetConfig.new()
+	m.config = GSNetConfig.new()
 	m.config.tick_rate = 128
 	m.config.snapshot_rate = 20
 	if not as_server:
@@ -147,13 +147,13 @@ func _delay_manager(as_server: bool) -> DotNetManager:
 
 
 func _check_delay_buffer_units() -> void:
-	var fast := DotNetConfig.new()
+	var fast := GSNetConfig.new()
 	fast.tick_rate = 128
 	fast.snapshot_rate = 20
 	fast.interpolation_buffer = 2.0
 	fast.adaptive_interpolation = false
 
-	var sized := DotNetInterpolator.new(fast)
+	var sized := GSNetInterpolator.new(fast)
 	_check(
 		"the buffer is counted in snapshots (%.2f)" % sized.delay_snapshots(),
 		is_equal_approx(sized.delay_snapshots(), 2.0)
@@ -171,7 +171,7 @@ func _check_delay_buffer_units() -> void:
 	)
 
 
-func _check_render_delay_counts(counts: Array[Dictionary], worst: Array, interp: DotNetInterpolator) -> void:
+func _check_render_delay_counts(counts: Array[Dictionary], worst: Array, interp: GSNetInterpolator) -> void:
 	for leg in range(3):
 		var c: Dictionary = counts[leg]
 		var label: String = ["clean", "lossy (1 in 5)", "120 ms round trip"][leg]
@@ -200,7 +200,7 @@ func _check_render_delay_counts(counts: Array[Dictionary], worst: Array, interp:
 
 
 func _check_render_delay_stop(
-		server_d: DotNetManager, client_d: DotNetManager, server_move: Movement,
+		server_d: GSNetManager, client_d: GSNetManager, server_move: Movement,
 		client_move: Movement, delivered: Array[PackedByteArray], lossy: Array) -> void:
 	# And then they stop. Every snapshot after the stop carries nothing for `position`, so what
 	# is drawn later has to be where the server left them, not the blend being drawn when the
@@ -227,11 +227,11 @@ func _test_lag_compensation() -> void:
 	print("")
 	print("[lag compensation]")
 
-	var config := DotNetConfig.new()
+	var config := GSNetConfig.new()
 	config.history_sec = 1.0
 	config.max_rewind_sec = 0.5
 
-	var history := DotNetHistory.new(config)
+	var history := GSNetHistory.new(config)
 
 	var target := _make_entity(&"player", 3)
 	add_child(target.get_parent())
@@ -302,15 +302,15 @@ func _test_prediction() -> void:
 
 	_check_late_peer_id()
 
-	var config := DotNetConfig.new()
+	var config := GSNetConfig.new()
 	config.enable_prediction = true
 
-	var predictor := DotNetPredictor.new(config)
+	var predictor := GSNetPredictor.new(config)
 	var dt := 1.0 / 60.0
 
 	var inputs := _alternating_inputs(dt)
 
-	# The server, as DotNetManager.server_tick does: take the input for the tick, apply it,
+	# The server, as GSNetManager.server_tick does: take the input for the tick, apply it,
 	# then simulate. In the tree, unlike the other sections' entities: reconciliation reads
 	# `world_position()`, and `global_position` outside the tree is an engine error per call.
 	var server_entity := _in_tree(_make_entity(&"player", 2))
@@ -335,7 +335,7 @@ func _test_prediction() -> void:
 	_check("the client entity is predicted", client_entity.is_predicted())
 
 	var client_movement := client_entity.behaviours[0] as Movement
-	var buffer := DotNetInput.Buffer.new(config.input_history_ticks)
+	var buffer := GSNetInput.Buffer.new(config.input_history_ticks)
 
 	for input in inputs:
 		buffer.push(input)
@@ -355,7 +355,7 @@ func _test_prediction() -> void:
 
 	# The whole contract: after replaying ticks 11–20 the client must hold exactly
 	# what the server computed for tick 20. Reverting the input application in
-	# DotNetPredictor.reconcile leaves it 0.9 m away here.
+	# GSNetPredictor.reconcile leaves it 0.9 m away here.
 	var gap := client_movement.position.distance_to(server_movement.position)
 	_check("replay reconverged on the server's state (%.4f m apart)" % gap,
 		gap < 0.001)
@@ -371,7 +371,7 @@ func _test_prediction() -> void:
 
 ## A link that turns jittery: the interpolation buffer must grow without moving the render
 ## time backwards, and once grown cover how late snapshots are. 128 ticks, a snapshot every 4,
-## with the receive timeline on the quickest arrivals, as `DotNetClock` keeps it.
+## with the receive timeline on the quickest arrivals, as `GSNetClock` keeps it.
 func _alternating_inputs(dt: float) -> Array[DemoInput]:
 	# Direction changes every tick, so simulating tick 14 with tick 20's input
 	# gives a visibly different answer.
@@ -386,7 +386,7 @@ func _alternating_inputs(dt: float) -> Array[DemoInput]:
 
 
 func _check_prediction_holes(
-		config: DotNetConfig, inputs: Array[DemoInput], authoritative_at_10: Dictionary, dt: float) -> void:
+		config: GSNetConfig, inputs: Array[DemoInput], authoritative_at_10: Dictionary, dt: float) -> void:
 	# A hole in the history: the client's clock jumped over ticks 14-16, so it made no commands
 	# for them and the server ran them on tick 13's. The replay must do the same, not stop at
 	# the hole (that left the predicted player 2 m short at 20% loss).
@@ -404,12 +404,12 @@ func _check_prediction_holes(
 	holed_client.is_owner = true
 	holed_client.is_authoritative = false
 	var holed_client_movement := holed_client.behaviours[0] as Movement
-	var holed := DotNetInput.Buffer.new(config.input_history_ticks)
+	var holed := GSNetInput.Buffer.new(config.input_history_ticks)
 	for input in inputs:
 		if input.tick < 14 or input.tick > 16:
 			holed.push(input)
 	# Its own predictor, so the counts the shared one is checked on below stay its own.
-	var across := DotNetPredictor.new(config).reconcile(holed_client, 10, holed_at_10, holed, 20, dt)
+	var across := GSNetPredictor.new(config).reconcile(holed_client, 10, holed_at_10, holed, 20, dt)
 	var hole_gap := holed_client_movement.position.distance_to(holed_server_movement.position)
 	_check("a replay across a hole repeats the command before it, as the server did (%d ticks, %.4f m apart)" % [
 		int(across.value) if across.ok else -1, hole_gap],
@@ -421,11 +421,11 @@ func _check_prediction_holes(
 	var ahead_client := _in_tree(_make_entity(&"player", 2))
 	ahead_client.is_owner = true
 	ahead_client.is_authoritative = false
-	var ahead := DotNetInput.Buffer.new(config.input_history_ticks)
+	var ahead := GSNetInput.Buffer.new(config.input_history_ticks)
 	for input in inputs:
 		if input.tick <= 12:
 			ahead.push(input)
-	var stopped := DotNetPredictor.new(config).reconcile(ahead_client, 10, authoritative_at_10, ahead, 14, dt)
+	var stopped := GSNetPredictor.new(config).reconcile(ahead_client, 10, authoritative_at_10, ahead, 14, dt)
 	_check("a replay stops at the newest input rather than predict ticks not played (%d)" % (int(stopped.value) if stopped.ok else -1),
 		stopped.ok and int(stopped.value) == 2)
 	_out_of_tree(ahead_client)
@@ -434,11 +434,11 @@ func _check_prediction_holes(
 
 
 func _check_prediction_edges(
-		predictor: DotNetPredictor, config: DotNetConfig, buffer: DotNetInput.Buffer,
+		predictor: GSNetPredictor, config: GSNetConfig, buffer: GSNetInput.Buffer,
 		authoritative_at_10: Dictionary, dt: float) -> void:
 	# A replay that cannot reach its inputs must stop rather than compound the
 	# error — history has been acked away here, so there is nothing to replay from.
-	var starved := DotNetInput.Buffer.new(config.input_history_ticks)
+	var starved := GSNetInput.Buffer.new(config.input_history_ticks)
 	var lonely := _in_tree(_make_entity(&"player", 2))
 	lonely.is_owner = true
 	lonely.is_authoritative = false
@@ -463,7 +463,7 @@ func _check_prediction_edges(
 		predictor.describe()["replays"] == 2)
 
 	# An entity that would simulate nothing (a dead player) keeps the rewind and replays
-	# nothing: DotNetBehaviour._net_predicts.
+	# nothing: GSNetBehaviour._net_predicts.
 	var dead := _in_tree(_make_entity(&"player", 2))
 	dead.is_owner = true
 	dead.is_authoritative = false
@@ -501,11 +501,11 @@ func _check_prediction_edges(
 
 func _test_buffer_growth() -> void:
 	print("[the buffer growing]")
-	var config := DotNetConfig.new()
+	var config := GSNetConfig.new()
 	config.tick_rate = 128
 	config.snapshot_rate = 32
 	config.adaptive_interpolation = true
-	var interpolator := DotNetInterpolator.new(config)
+	var interpolator := GSNetInterpolator.new(config)
 	var period := config.ticks_per_snapshot()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20261010
@@ -547,7 +547,7 @@ func _check_two_slips(physics: float) -> void:
 	# 1b. Two slips the same way close together. The first is still being taken up when the
 	# second lands, so the slip briefly passes 1; clamped there, the remainder was lost and
 	# that frame moved half a tick less than its time (Airdrift's `headless_feel` caught it).
-	var twice := DotNetClock.new(64, false)
+	var twice := GSNetClock.new(64, false)
 	var timeline: Array[float] = []
 	for i in range(40):
 		if i == 10 or i == 15:
@@ -574,7 +574,7 @@ func _test_drawing_through_slips() -> void:
 	var physics := 1.0 / 64.0
 
 	# 1. Drift. The clock runs its ticks 4% long, so about one physics frame in 25 runs none.
-	var clock := DotNetClock.new(64, false)
+	var clock := GSNetClock.new(64, false)
 	clock.set("_drift_scale", 1.04)
 	var t := 0.0
 	var physics_time := 0.0
@@ -596,7 +596,7 @@ func _test_drawing_through_slips() -> void:
 	_check_two_slips(physics)
 
 	# 2. The receive timeline re-anchors: three ticks forward at once, then one back.
-	var receiving := DotNetClock.new(64, false)
+	var receiving := GSNetClock.new(64, false)
 	receiving.set("_synced", true)
 	t = 0.0
 	physics_time = 0.0
@@ -610,7 +610,7 @@ func _test_drawing_through_slips() -> void:
 		if i == 144:
 			receiving.call("_follow_arrival", receiving.received_tick() + 3, false)
 		if i == 288:
-			for _n in range(DotNetClock.SETTLE_SAMPLES):
+			for _n in range(GSNetClock.SETTLE_SAMPLES):
 				receiving.call("_follow_arrival", receiving.received_tick() - 2, false)
 		var frac := (t - physics_time) / physics
 		drawn.append(float(receiving.received_tick()) + receiving.render_alpha(frac, physics) \
@@ -622,7 +622,7 @@ func _test_drawing_through_slips() -> void:
 		worst, naive_worst], worst < 0.12 and naive_worst > 0.9)
 
 	# 3. A snapshot stream stalls for ten ticks while a runner turns, and resumes.
-	var config := DotNetConfig.new()
+	var config := GSNetConfig.new()
 	config.tick_rate = 64
 	config.snapshot_rate = 32
 	config.adaptive_interpolation = false
@@ -636,21 +636,21 @@ func _test_drawing_through_slips() -> void:
 ## A runner on a 4 m circle at 9 m/s, its snapshots stalled for ten ticks and then all
 ## arriving at once, drawn through `apply` at 144 Hz: the largest change between one frame's
 ## step and the next. [param frames] drives `advance`, which is what turns the easing on.
-func _resume_steps(config: DotNetConfig, frames: bool) -> float:
+func _resume_steps(config: GSNetConfig, frames: bool) -> float:
 	var watcher := Interpolated.new()
 	watcher.name = "Net"
 	var host := Node3D.new()
 	host.name = "Resumed"
 	add_child(host)
 	host.add_child(watcher)
-	var identity := DotNetIdentity.new()
+	var identity := GSNetIdentity.new()
 	identity.name = "Identity"
 	identity.owner_peer_id = 5
 	host.add_child(identity)
-	var registry := DotNetRegistry.new(false, 1)
+	var registry := GSNetRegistry.new(false, 1)
 	registry.register(identity, 91, 0, config)
 
-	var interpolator := DotNetInterpolator.new(config)
+	var interpolator := GSNetInterpolator.new(config)
 	var omega := 9.0 / 4.0 / 64.0
 	var at := func(tick: int) -> Vector3:
 		return Vector3(cos(float(tick) * omega), 0.0, sin(float(tick) * omega)) * 4.0
@@ -675,8 +675,8 @@ func _resume_steps(config: DotNetConfig, frames: bool) -> float:
 
 
 ## The buffer a link that is always on time settles to, in ticks.
-func _settled_delay(config: DotNetConfig) -> float:
-	var interpolator := DotNetInterpolator.new(config)
+func _settled_delay(config: GSNetConfig) -> float:
+	var interpolator := GSNetInterpolator.new(config)
 	var period := config.ticks_per_snapshot()
 	# Ten seconds: the buffer gives time back at 1% an arrival, by design.
 	for now in range(0, 128 * 10):

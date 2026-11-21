@@ -1,6 +1,6 @@
 extends Node
 
-## [DotNetVisibility] and [DotNetInterestDistance] with it: PVS row codec, hand-made rooms, a one-plane BSP, conservative answers, the tree and native
+## [GSNetVisibility] and [GSNetInterestDistance] with it: PVS row codec, hand-made rooms, a one-plane BSP, conservative answers, the tree and native
 ## hand-off, the cluster cache, pins and audible radius, the switch, fast vs generic paths, save/load. Native agreement: tools/visibility_bench.tscn.
 ## Run: [code]godot --headless --path . res://examples/visibility_selftest.tscn[/code]
 
@@ -13,7 +13,7 @@ var _sections := 0
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.ERROR)
+	GSLog.set_level(GSLog.Level.ERROR)
 	print("dot-net visibility self-test")
 	_rows()
 	_rooms()
@@ -42,15 +42,15 @@ func _rows() -> void:
 	_sections += 1
 	print("-- PVS rows (Quake run-length: a zero byte, then how many zero bytes)")
 	var pvs := PackedByteArray([0x05, 0x00, 0x02, 0x80, 0x00, 0x04])
-	_check(DotNetVisibility.decode_row(pvs, 0, 4) == PackedByteArray([0x05, 0, 0, 0x80]), "a run of zeros expands")
-	_check(DotNetVisibility.decode_row(pvs, 4, 4) == PackedByteArray([0, 0, 0, 0]), "a row of only zeros")
-	_check(DotNetVisibility.decode_row(pvs, -1, 3) == PackedByteArray([0xFF, 0xFF, 0xFF]), "no row: sees everything")
-	_check(DotNetVisibility.decode_row(pvs, 99, 2) == PackedByteArray([0xFF, 0xFF]), "a row past the end: sees everything")
+	_check(GSNetVisibility.decode_row(pvs, 0, 4) == PackedByteArray([0x05, 0, 0, 0x80]), "a run of zeros expands")
+	_check(GSNetVisibility.decode_row(pvs, 4, 4) == PackedByteArray([0, 0, 0, 0]), "a row of only zeros")
+	_check(GSNetVisibility.decode_row(pvs, -1, 3) == PackedByteArray([0xFF, 0xFF, 0xFF]), "no row: sees everything")
+	_check(GSNetVisibility.decode_row(pvs, 99, 2) == PackedByteArray([0xFF, 0xFF]), "a row past the end: sees everything")
 
 
 ## Four rooms in a row along x, each seeing its neighbours only.
-func _corridor() -> DotNetVisibility:
-	return DotNetVisibility.from_cells(
+func _corridor() -> GSNetVisibility:
+	return GSNetVisibility.from_cells(
 		Vector3.ZERO, 4.0, Vector3i(4, 1, 1), PackedInt32Array([0, 1, 2, 3]), [[1], [2], [3], []]
 	)
 
@@ -66,20 +66,20 @@ func _rooms() -> void:
 	_check(not vis.visible(Vector3(14, 2, 2), Vector3(2, 2, 2)), "nor the far end back")
 	_check(vis.visible(Vector3(2, 2, 2), Vector3(-5, 2, 2)) and vis.visible(Vector3(40, 2, 2), Vector3(2, 2, 2)),
 		"outside the bounds answers visible")
-	var solid := DotNetVisibility.from_cells(
+	var solid := GSNetVisibility.from_cells(
 		Vector3.ZERO, 4.0, Vector3i(3, 1, 1), PackedInt32Array([0, -1, 1]), [[], []]
 	)
 	_check(not solid.visible(Vector3(2, 2, 2), Vector3(10, 2, 2)), "two rooms that do not see each other")
 	_check(solid.visible(Vector3(6, 2, 2), Vector3(10, 2, 2)) and solid.visible(Vector3(2, 2, 2), Vector3(6, 2, 2)),
 		"a cell inside solid answers visible both ways")
-	_check(DotNetVisibility.new().visible(Vector3.ZERO, Vector3(99, 0, 0)), "no data answers visible")
+	_check(GSNetVisibility.new().visible(Vector3.ZERO, Vector3(99, 0, 0)), "no data answers visible")
 
 
 func _bsp() -> void:
 	_sections += 1
 	print("-- a one-plane BSP baked")
 	# One wall at x = 8: front (x >= 8) is leaf 0, cluster 1; back is leaf 1, cluster 0; neither sees the other.
-	var vis := DotNetVisibility.bake_bsp(
+	var vis := GSNetVisibility.bake_bsp(
 		PackedFloat32Array([1, 0, 0, 8]), PackedInt32Array([0, -1, -2]), PackedInt32Array([1, 0]), 2,
 		PackedInt32Array([0, 1]), PackedByteArray([0x01, 0x02]), 0, AABB(Vector3.ZERO, Vector3(16, 4, 4))
 	)
@@ -95,7 +95,7 @@ func _bsp() -> void:
 func _tree() -> void:
 	_sections += 1
 	print("-- the tree of hand-made rooms")
-	var vis := DotNetVisibility.from_cells(
+	var vis := GSNetVisibility.from_cells(
 		Vector3.ZERO, 2.0, Vector3i(4, 2, 1), PackedInt32Array([0, 0, 1, 1, 0, 0, 1, 1]), [[], []]
 	)
 	_check(vis.nodes.size() / 3 == 7, "eight cells, seven splits")
@@ -106,17 +106,17 @@ func _tree() -> void:
 	var nd := vis.native_dict()
 	_check(nd["serial"] == vis.serial and nd["rows"] == vis.rows and nd["nodes"] == vis.nodes and nd["bounds"] == vis.bounds,
 		"native_dict carries the tree")
-	var broken := vis.duplicate() as DotNetVisibility
+	var broken := vis.duplicate() as GSNetVisibility
 	broken.head = 99
 	_check(not broken.is_ready() and broken.visible(Vector3(1, 1, 1), Vector3(5, 3, 1)), "a broken tree is not used: visible")
 
 
 ## An identity at [param at] on a node in the tree.
-func _body(id: int, at: Vector3, owner_peer: int = 0) -> DotNetIdentity:
+func _body(id: int, at: Vector3, owner_peer: int = 0) -> GSNetIdentity:
 	var body := Node3D.new()
 	add_child(body)
 	body.global_position = at
-	var identity := DotNetIdentity.new()
+	var identity := GSNetIdentity.new()
 	body.add_child(identity)
 	identity.entity = body
 	identity.net_id = id
@@ -128,7 +128,7 @@ func _body(id: int, at: Vector3, owner_peer: int = 0) -> DotNetIdentity:
 
 func _ids(list: Array) -> Array:
 	var out := []
-	for identity: DotNetIdentity in list:
+	for identity: GSNetIdentity in list:
 		out.append(identity.net_id)
 	out.sort()
 	return out
@@ -136,7 +136,7 @@ func _ids(list: Array) -> Array:
 
 func _interest() -> void:
 	_sections += 1
-	print("-- DotNetInterestDistance with visibility")
+	print("-- GSNetInterestDistance with visibility")
 	var observer := _body(1, Vector3(2, 2, 2), 7)
 	var neighbour := _body(2, Vector3(6, 2, 2))
 	var hidden := _body(3, Vector3(10, 2, 2))
@@ -145,9 +145,9 @@ func _interest() -> void:
 	var owned := _body(5, Vector3(14, 2, 2), 7)
 	var tagged := _body(6, Vector3(10, 2, 2))
 	tagged.interest_tags = PackedStringArray(["objective"])
-	var all: Array[DotNetIdentity] = [observer, neighbour, hidden, pinned, owned, tagged]
+	var all: Array[GSNetIdentity] = [observer, neighbour, hidden, pinned, owned, tagged]
 	var context := {"tick": 1, "now_ms": 0}
-	var interest := DotNetInterestDistance.new()
+	var interest := GSNetInterestDistance.new()
 	interest.evaluation_interval_sec = 0.0
 	interest.visibility_audible_radius = 0.0
 	_check(_ids(interest.relevant_for(observer, all, 7, context)) == [1, 2, 3, 4, 5, 6], "no visibility: all in range")
@@ -171,10 +171,10 @@ func _interest() -> void:
 	_check(_ids(interest.relevant_for(observer, all, 7, context)) == [1, 2, 4, 5], "distance still cuts first")
 	interest.radius = 200.0
 	_check(interest.describe()["visibility"] is Dictionary, "describe() shows the set")
-	_check(interest.native_config(DotNetConfig.new())["vis"].has("rows"), "the native config carries it")
+	_check(interest.native_config(GSNetConfig.new())["vis"].has("rows"), "the native config carries it")
 	interest.visibility_enabled = false
-	_check(interest.native_config(DotNetConfig.new())["vis"].is_empty(), "and not when switched off")
-	var cached := DotNetInterestDistance.new()
+	_check(interest.native_config(GSNetConfig.new())["vis"].is_empty(), "and not when switched off")
+	var cached := GSNetInterestDistance.new()
 	cached.evaluation_interval_sec = 10.0
 	cached.visibility_audible_radius = 0.0
 	var _first := cached.relevant_for(observer, all, 7, context)
@@ -187,16 +187,16 @@ func _interest() -> void:
 func _paths_agree() -> void:
 	_sections += 1
 	print("-- the fast loop and the generic path agree")
-	var vis := DotNetVisibility.from_cells(
+	var vis := GSNetVisibility.from_cells(
 		Vector3.ZERO, 4.0, Vector3i(8, 2, 8), _random_cells(8 * 2 * 8, 12), _random_sees(12)
 	)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2026
-	var all: Array[DotNetIdentity] = []
+	var all: Array[GSNetIdentity] = []
 	for i in 120:
 		all.append(_body(i + 1, Vector3(rng.randf_range(-4, 36), rng.randf_range(0, 8), rng.randf_range(-4, 36)), i % 7))
-	var fast := DotNetInterestDistance.new()
-	var slow := DotNetInterestDistance.new()
+	var fast := GSNetInterestDistance.new()
+	var slow := GSNetInterestDistance.new()
 	slow.use_squared = false
 	for s in [fast, slow]:
 		s.evaluation_interval_sec = 0.0
@@ -212,7 +212,7 @@ func _paths_agree() -> void:
 		var b := _ids(slow.relevant_for(observer, all, observer.owner_peer_id, context))
 		if a == b:
 			same += 1
-		var plain := DotNetInterestDistance.new()
+		var plain := GSNetInterestDistance.new()
 		plain.evaluation_interval_sec = 0.0
 		plain.radius = 30.0
 		culled += plain.relevant_for(observer, all, observer.owner_peer_id, context).size() - a.size()
@@ -250,7 +250,7 @@ func _saved() -> void:
 	var vis := _corridor()
 	var path := "user://visibility_selftest.res"
 	_check(ResourceSaver.save(vis, path) == OK, "ResourceSaver writes it")
-	var back := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as DotNetVisibility
+	var back := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as GSNetVisibility
 	_check(back != null and back.is_ready(), "and it loads ready")
 	_check(back != null and not back.visible(Vector3(2, 2, 2), Vector3(10, 2, 2)) and back.visible(Vector3(2, 2, 2), Vector3(6, 2, 2)),
 		"answering as before")

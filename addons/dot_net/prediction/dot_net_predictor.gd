@@ -1,4 +1,4 @@
-class_name DotNetPredictor
+class_name GSNetPredictor
 extends RefCounted
 
 ## Client-side prediction and server reconciliation. [b]Why prediction.[/b] Without it, pressing
@@ -7,7 +7,7 @@ extends RefCounted
 
 const CHANNEL := "net.predict"
 
-var config: DotNetConfig
+var config: GSNetConfig
 
 ## net_id -> {offset: Vector3, at_ms: int}
 ##
@@ -30,7 +30,7 @@ var _skipped: int = 0
 ## is the one counted. What says which part of a game's state the prediction gets wrong.
 var _mismatches: Dictionary = {}
 ## Reconciles that rewound and did not replay, because the entity was not predicting
-## (DotNetBehaviour._net_predicts).
+## (GSNetBehaviour._net_predicts).
 var _unpredicted := 0
 ## net_id -> whether its last reconcile left it predicting. A reconcile from a state that was not
 ## a prediction (a dead player the server respawned) moves it, but is not a misprediction.
@@ -42,24 +42,24 @@ var _unpredicted_moves := 0
 var _last_mismatch: Dictionary = {}
 
 ## net_id -> {tick: {property: value}}: what each predicted tick produced, for
-## [member DotNetConfig.skip_matching_replays]. Trimmed to the unacknowledged window.
+## [member GSNetConfig.skip_matching_replays]. Trimmed to the unacknowledged window.
 var _predicted: Dictionary = {}
 
 ## net_id -> the newest tick [method predict] simulated it for, where a replay stops.
 var _last_predicted: Dictionary = {}
 
 
-func _init(p_config: DotNetConfig) -> void:
+func _init(p_config: GSNetConfig) -> void:
 	config = p_config
 
 
 ## Simulates one tick for every predicted entity. Called on the client each tick, after the input for
 ## that tick has been recorded.
 func predict(
-	identities: Array[DotNetIdentity],
+	identities: Array[GSNetIdentity],
 	tick: int,
 	delta: float,
-	input: DotNetInput = null
+	input: GSNetInput = null
 ) -> void:
 	if not config.enable_prediction:
 		return
@@ -77,7 +77,7 @@ func predict(
 
 
 ## Keeps what [param tick] produced for [param identity], when replays may be skipped.
-func _remember(identity: DotNetIdentity, tick: int) -> void:
+func _remember(identity: GSNetIdentity, tick: int) -> void:
 	if not config.skip_matching_replays or not config.reconcile_once_per_frame:
 		return
 	var values := {}
@@ -97,8 +97,8 @@ func _remember(identity: DotNetIdentity, tick: int) -> void:
 
 
 ## Whether the server's [param values] for [param server_tick] are what this client
-## predicted for that tick, every property it predicts ([member DotNetVar.client_predicts]).
-func _predicted_matches(identity: DotNetIdentity, server_tick: int, values: Dictionary) -> bool:
+## predicted for that tick, every property it predicts ([member GSNetVar.client_predicts]).
+func _predicted_matches(identity: GSNetIdentity, server_tick: int, values: Dictionary) -> bool:
 	var ticks: Dictionary = _predicted.get(identity.net_id, {})
 	var mine: Dictionary = ticks.get(server_tick, {})
 	if mine.is_empty():
@@ -137,18 +137,18 @@ func _forget_through(net_id: int, through: int) -> void:
 ## the server said for [param server_tick]. The replay only converges if [method _net_simulate] is
 ## deterministic given input and start state; otherwise the client disagrees with the server every tick.
 func reconcile(
-	identity: DotNetIdentity,
+	identity: GSNetIdentity,
 	server_tick: int,
 	authoritative_values: Dictionary,
-	input_buffer: DotNetInput.Buffer,
+	input_buffer: GSNetInput.Buffer,
 	current_tick: int,
 	tick_delta: float
-) -> DotResult:
+) -> GSResult:
 	if not identity.is_predicted():
-		return DotResult.success(0)
+		return GSResult.success(0)
 
 	# The prediction already reached this state: a rewind and a replay would compute what the entity
-	# holds now. See DotNetConfig.skip_matching_replays.
+	# holds now. See GSNetConfig.skip_matching_replays.
 	if config.skip_matching_replays and config.reconcile_once_per_frame \
 			and _predicted_matches(identity, server_tick, authoritative_values):
 		# [b]The properties hold the prediction again; the game's simulation does not.[/b] Reading the
@@ -160,7 +160,7 @@ func reconcile(
 		_was_predicting[identity.net_id] = true
 		_skipped += 1
 		_last_replay_ticks = 0
-		return DotResult.success(0)
+		return GSResult.success(0)
 
 	# What the client currently shows, before rewinding. Needed to measure the
 	# correction so it can be eased rather than snapped.
@@ -180,10 +180,10 @@ func reconcile(
 	if applied == 0:
 		# Nothing the server has ever said about this entity: no state has arrived for it yet, so there is
 		# nothing to rewind to and leaving the prediction alone is correct.
-		return DotResult.success(0)
+		return GSResult.success(0)
 
 	# 2. Replay every input the server has not confirmed yet, unless nothing of the entity
-	# would simulate (DotNetBehaviour._net_predicts): then the rewound state is the answer.
+	# would simulate (GSNetBehaviour._net_predicts): then the rewound state is the answer.
 	var replayed := 0
 	var replay_tick := server_tick + 1
 	# Never past the newest predicted tick: a client that moves its clock and then reconciles
@@ -203,7 +203,7 @@ func reconcile(
 		var input := input_buffer.peek(replay_tick)
 
 		# [b]A hole is not a gap.[/b] A tick with no input, but older and newer ones in the buffer, is a
-		# tick the client never generated a command for -- its clock jumped forward over it (`DotNetClock`'s
+		# tick the client never generated a command for -- its clock jumped forward over it (`GSNetClock`'s
 		# catch-up) -- and the server ran it on the player's previous command.
 		if input == null:
 			var previous := input_buffer.latest_before(replay_tick)
@@ -217,7 +217,7 @@ func reconcile(
 		# for this latency. Simulating with no input diverges, so stop and let the
 		# next snapshot correct it rather than compounding the error.
 		if input == null and replay_tick < through:
-			DotLog.debug(
+			GSLog.debug(
 				CHANNEL,
 				"replay gap; input history is too short for this latency",
 				{
@@ -275,7 +275,7 @@ func reconcile(
 	if error > 0.0:
 		_begin_correction(identity, before, after, error)
 
-	return DotResult.success(replayed)
+	return GSResult.success(replayed)
 
 
 ## The error above which a correction snaps: the large limit while large errors are eased.
@@ -294,7 +294,7 @@ func _ease_sec(size: float) -> float:
 
 ## Records the offset to ease out, or snaps when it is too large.
 func _begin_correction(
-	identity: DotNetIdentity,
+	identity: GSNetIdentity,
 	before: Dictionary,
 	after: Dictionary,
 	error: float
@@ -308,7 +308,7 @@ func _begin_correction(
 		_worst_snap = maxf(_worst_snap, error)
 		_corrections.erase(identity.net_id)
 
-		DotLog.debug(
+		GSLog.debug(
 			CHANNEL,
 			"correction snapped",
 			{"net_id": identity.net_id, "error": "%.2f m" % error}
@@ -366,7 +366,7 @@ func has_pending_correction(net_id: int) -> bool:
 	return _corrections.has(net_id)
 
 
-func _capture_visual(identity: DotNetIdentity) -> Dictionary:
+func _capture_visual(identity: GSNetIdentity) -> Dictionary:
 	var out := {"position": identity.world_position()}
 
 	if identity.entity is Node3D:

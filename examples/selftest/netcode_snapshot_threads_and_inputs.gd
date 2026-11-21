@@ -8,31 +8,31 @@ func _test_snapshot_threads() -> void:
 	print("[snapshot threads]")
 
 	# The same scripted ten-peer game on this thread, on four workers, and on two with
-	# DotParallel.verify on: every payload, PeerView and budget accumulator must come out byte
+	# GSParallel.verify on: every payload, PeerView and budget accumulator must come out byte
 	# for byte the same. The scenario reaches every per-peer record a build writes.
-	var was_verify := DotParallel.verify
-	var runs_before := DotParallel.verify_runs
+	var was_verify := GSParallel.verify
+	var runs_before := GSParallel.verify_runs
 
-	DotParallel.verify = false
+	GSParallel.verify = false
 	var off: Dictionary = _threads_scenario("ThreadsOff", 0, false)
 	var on: Dictionary = _threads_scenario("ThreadsOn", 4, false)
-	DotParallel.verify = true
+	GSParallel.verify = true
 	var verified: Dictionary = _threads_scenario("ThreadsVerify", 2, false)
-	var runs_after := DotParallel.verify_runs
-	DotParallel.verify = false
+	var runs_after := GSParallel.verify_runs
+	GSParallel.verify = false
 	var broken: Dictionary = _threads_scenario("ThreadsBroken", 4, true)
 	# The paths the first scenario leaves out (evaluation interval 0, no linger, no stagger,
 	# nothing rate-limited, no strings): serial against pooled again for each.
 	var extra := {}
 	for variant: String in ["cache", "grid", "thin"]:
-		DotParallel.verify = false
+		GSParallel.verify = false
 		var serial: Dictionary = _threads_scenario("Extra" + variant + "Off", 0, false, variant)
 		var pooled: Dictionary = _threads_scenario("Extra" + variant + "On", 3, false, variant)
-		DotParallel.verify = true
+		GSParallel.verify = true
 		var checked: Dictionary = _threads_scenario("Extra" + variant + "Verify", 2, false, variant)
-		DotParallel.verify = false
+		GSParallel.verify = false
 		extra[variant] = [serial, pooled, checked]
-	DotParallel.verify = was_verify
+	GSParallel.verify = was_verify
 
 	_check("the scenario sent parts to ten peers (%d payloads)" % (off["payloads"] as Array).size(),
 		int(off["peers_fed"]) == 10 and (off["payloads"] as Array).size() > 300)
@@ -41,10 +41,10 @@ func _test_snapshot_threads() -> void:
 		int(off["starved"]) > 0 and int(off["split"]) > 0)
 	_check("with workers available the pooled path ran (%d of %d snapshots)"
 			% [on["pooled"], on["snapshots"]],
-		not DotParallel.available() or int(on["pooled"]) == int(on["snapshots"]))
+		not GSParallel.available() or int(on["pooled"]) == int(on["snapshots"]))
 	_check("threads off never pools", int(off["pooled"]) == 0)
 	_check("snapshot workers line names the workers and the interest path (%s)" % on["note"],
-		not DotParallel.available() or (str(on["note"]).contains("workers active: 4")
+		not GSParallel.available() or (str(on["note"]).contains("workers active: 4")
 			and str(on["note"]).contains("interest distance")))
 	_check("four workers send the same payloads, byte for byte %s" % _first_difference(off["payloads"], on["payloads"]),
 		_first_difference(off["payloads"], on["payloads"]) == "")
@@ -54,7 +54,7 @@ func _test_snapshot_threads() -> void:
 	_check("two workers with verify on: same payloads and state",
 		_first_difference(off["payloads"], verified["payloads"]) == ""
 			and _first_difference(off["states"], verified["states"]) == ""
-			and (not DotParallel.available() or int(verified["pooled"]) > 0))
+			and (not GSParallel.available() or int(verified["pooled"]) > 0))
 	# A build writes its peers' records in place, so running it twice would advance every
 	# view and accumulator twice: verify must leave these tasks alone. The byte comparison
 	# with the inline path above is what proves them instead.
@@ -64,7 +64,7 @@ func _test_snapshot_threads() -> void:
 	# Armed: a pooled build that ignores its peer's acks must be seen to differ, or the
 	# comparisons above prove nothing.
 	_check("armed: a pooled build that ignores acks is caught",
-		not DotParallel.available()
+		not GSParallel.available()
 			or _first_difference(off["payloads"], broken["payloads"]) != "")
 
 	_check_thread_variants(off, extra)
@@ -77,34 +77,34 @@ func _test_snapshot_threads() -> void:
 func _native_sample(type: int, round: int) -> Variant:
 	var edge := round % 9 == 0
 	match type:
-		DotNetVar.Type.BOOL:
+		GSNetVar.Type.BOOL:
 			return _rng.randi() % 2 == 0
-		DotNetVar.Type.UINT:
+		GSNetVar.Type.UINT:
 			return _rng.randi_range(0, 400)
-		DotNetVar.Type.INT:
+		GSNetVar.Type.INT:
 			return _rng.randi_range(-700, 700)
-		DotNetVar.Type.VARINT:
+		GSNetVar.Type.VARINT:
 			return (1 << 40) - _rng.randi() if edge else _rng.randi_range(-100000, 100000)
-		DotNetVar.Type.FLOAT:
+		GSNetVar.Type.FLOAT:
 			return _rng.randf_range(-1.0e5, 1.0e5)
-		DotNetVar.Type.FLOAT_RANGE:
+		GSNetVar.Type.FLOAT_RANGE:
 			return _rng.randf_range(-12.0, 12.0)
-		DotNetVar.Type.VECTOR3_POSITION:
+		GSNetVar.Type.VECTOR3_POSITION:
 			return Vector3(_rng.randf_range(-3000, 3000), _rng.randf_range(-50, 50), _rng.randf_range(-3000, 3000))
-		DotNetVar.Type.VECTOR3_VELOCITY:
+		GSNetVar.Type.VECTOR3_VELOCITY:
 			return Vector3(_rng.randf_range(-150, 150), _rng.randf_range(-150, 150), _rng.randf_range(-150, 150))
-		DotNetVar.Type.VECTOR3_RANGE:
+		GSNetVar.Type.VECTOR3_RANGE:
 			return Vector3(_rng.randf_range(-6, 6), _rng.randf_range(-6, 6), _rng.randf_range(-6, 6))
-		DotNetVar.Type.DIRECTION:
+		GSNetVar.Type.DIRECTION:
 			return Vector3.ZERO if edge else Vector3(_rng.randf_range(-2, 2), _rng.randf_range(-2, 2), _rng.randf_range(-2, 2))
-		DotNetVar.Type.QUATERNION:
+		GSNetVar.Type.QUATERNION:
 			var q := Quaternion(_rng.randf_range(-1, 1), _rng.randf_range(-1, 1), _rng.randf_range(-1, 1), _rng.randf_range(-1, 1))
 			return q * 3.0 if edge else q.normalized()
-		DotNetVar.Type.ANGLE:
+		GSNetVar.Type.ANGLE:
 			return _rng.randf_range(-1000.0, 1000.0)
-		DotNetVar.Type.STRING:
+		GSNetVar.Type.STRING:
 			return "ü€".repeat(300) + "x" if edge else "name-%d" % _rng.randi()
-		DotNetVar.Type.BYTES:
+		GSNetVar.Type.BYTES:
 			var b := PackedByteArray()
 			for _i in _rng.randi_range(0, 20):
 				b.append(_rng.randi() % 256)
@@ -112,38 +112,38 @@ func _native_sample(type: int, round: int) -> Variant:
 	return null
 
 
-## Every native encoder writes what [method DotNetVar.write] writes, at every bit pad.
+## Every native encoder writes what [method GSNetVar.write] writes, at every bit pad.
 func _native_encoders_match(loaded: bool) -> void:
-	var declarations: Array[DotNetVar] = [
-		DotNetVar.make(&"a", DotNetVar.Type.BOOL),
-		DotNetVar.make(&"b", DotNetVar.Type.UINT).bits(7),
-		DotNetVar.make(&"c", DotNetVar.Type.INT).bits(9),
-		DotNetVar.make(&"d", DotNetVar.Type.VARINT),
-		DotNetVar.make(&"e", DotNetVar.Type.FLOAT),
-		DotNetVar.make(&"f", DotNetVar.Type.FLOAT_RANGE).range_of(-10.0, 10.0).bits(12),
-		DotNetVar.make(&"g", DotNetVar.Type.VECTOR3_POSITION),
-		DotNetVar.make(&"h", DotNetVar.Type.VECTOR3_VELOCITY),
-		DotNetVar.make(&"i", DotNetVar.Type.VECTOR3_RANGE).range_of(-5.0, 5.0).bits(10),
-		DotNetVar.make(&"j", DotNetVar.Type.DIRECTION).bits(11),
-		DotNetVar.make(&"k", DotNetVar.Type.QUATERNION),
-		DotNetVar.make(&"l", DotNetVar.Type.ANGLE).bits(9),
-		DotNetVar.make(&"m", DotNetVar.Type.STRING),
-		DotNetVar.make(&"n", DotNetVar.Type.BYTES),
+	var declarations: Array[GSNetVar] = [
+		GSNetVar.make(&"a", GSNetVar.Type.BOOL),
+		GSNetVar.make(&"b", GSNetVar.Type.UINT).bits(7),
+		GSNetVar.make(&"c", GSNetVar.Type.INT).bits(9),
+		GSNetVar.make(&"d", GSNetVar.Type.VARINT),
+		GSNetVar.make(&"e", GSNetVar.Type.FLOAT),
+		GSNetVar.make(&"f", GSNetVar.Type.FLOAT_RANGE).range_of(-10.0, 10.0).bits(12),
+		GSNetVar.make(&"g", GSNetVar.Type.VECTOR3_POSITION),
+		GSNetVar.make(&"h", GSNetVar.Type.VECTOR3_VELOCITY),
+		GSNetVar.make(&"i", GSNetVar.Type.VECTOR3_RANGE).range_of(-5.0, 5.0).bits(10),
+		GSNetVar.make(&"j", GSNetVar.Type.DIRECTION).bits(11),
+		GSNetVar.make(&"k", GSNetVar.Type.QUATERNION),
+		GSNetVar.make(&"l", GSNetVar.Type.ANGLE).bits(9),
+		GSNetVar.make(&"m", GSNetVar.Type.STRING),
+		GSNetVar.make(&"n", GSNetVar.Type.BYTES),
 	]
-	var holder := DotNetBehaviour.new()
+	var holder := GSNetBehaviour.new()
 	for declaration in declarations:
-		declaration.bind_config(DotNetConfig.new())
+		declaration.bind_config(GSNetConfig.new())
 	holder.net_vars = declarations
 	var specs: Array = holder._native_spec()[1]
 	holder.free()
-	var core: Object = ClassDB.instantiate(DotNetNative.CORE_CLASS) if loaded else null
+	var core: Object = ClassDB.instantiate(GSNetNative.CORE_CLASS) if loaded else null
 	var compared := 0
 	var mismatched: Array = []
 	for round in 120:
 		for index in declarations.size():
 			var value: Variant = _native_sample(declarations[index].type, round)
 			for pad in 8:
-				var w := DotNetWriter.new(64)
+				var w := GSNetWriter.new(64)
 				if pad > 0:
 					w.write_bits(0, pad)
 				declarations[index].write(w, value)
@@ -153,24 +153,24 @@ func _native_encoders_match(loaded: bool) -> void:
 				compared += 1
 				if got.size() != 2 or got[0] != w.to_bytes() or int(got[1]) != w.bit_length() - pad:
 					if mismatched.size() < 3:
-						mismatched.append("%s %s pad %d" % [DotNetVar.Type.keys()[declarations[index].type], value, pad])
-	_check("native: every encoder writes DotNetVar.write's bits at every pad (%d compared; %s)" % [compared, mismatched],
+						mismatched.append("%s %s pad %d" % [GSNetVar.Type.keys()[declarations[index].type], value, pad])
+	_check("native: every encoder writes GSNetVar.write's bits at every pad (%d compared; %s)" % [compared, mismatched],
 		not loaded or (compared == 120 * 14 * 8 and mismatched.is_empty()))
 
 
-## [method DotNetBehaviour._native_encode]'s two shortcuts: nothing is encoded for an owner-only
+## [method GSNetBehaviour._native_encode]'s two shortcuts: nothing is encoded for an owner-only
 ## property of an entity nobody owns (no peer can be sent it), and an unchanged value answers from
 ## the last snapshot's encoding; a changed value, another owner or the switch off encodes again.
 func _native_encode_shortcuts() -> void:
-	var write_code := func(w: DotNetWriter, value: Variant) -> void:
+	var write_code := func(w: GSNetWriter, value: Variant) -> void:
 		w.write_uint(int(value), 16)
-	var read_code := func(r: DotNetReader) -> Variant:
+	var read_code := func(r: GSNetReader) -> Variant:
 		return r.read_uint(16)
-	var declaration := DotNetVar.make(&"code", DotNetVar.Type.CUSTOM).codec(write_code, read_code).to_owner_only()
-	declaration.bind_config(DotNetConfig.new())
-	var holder := DotNetBehaviour.new()
+	var declaration := GSNetVar.make(&"code", GSNetVar.Type.CUSTOM).codec(write_code, read_code).to_owner_only()
+	declaration.bind_config(GSNetConfig.new())
+	var holder := GSNetBehaviour.new()
 	holder.net_vars = [declaration]
-	var ident := DotNetIdentity.new()
+	var ident := GSNetIdentity.new()
 	holder.identity = ident
 
 	ident.owner_peer_id = 0
@@ -187,34 +187,34 @@ func _native_encode_shortcuts() -> void:
 	var plain: Array = holder._native_encode(0, 8, 1)
 	_check("native encode: another pad count is not answered from a different one", plain.size() == 2)
 
-	DotNetBehaviour.native_encode_shortcuts = false
+	GSNetBehaviour.native_encode_shortcuts = false
 	var off: Array = holder._native_encode(0, 8, 8)
-	DotNetBehaviour.native_encode_shortcuts = true
+	GSNetBehaviour.native_encode_shortcuts = true
 	_check("native encode: shortcuts off encodes afresh to the same bytes", not is_same(off, changed) and off == changed)
 	holder.free()
 	ident.free()
 
 
-## [constant DotNetVar.Type.PACKED_FLOAT32] writes exactly what a custom codec of a flag and
+## [constant GSNetVar.Type.PACKED_FLOAT32] writes exactly what a custom codec of a flag and
 ## [code]length[/code] float32s writes (FC's net_exact was one), at every start bit, and reads it
 ## back the same: NaNs, signed zeros, infinities, denormals, a wrong size or a wrong type.
 func _packed_float32_wire() -> void:
 	const N := 14
-	var write_old := func(w: DotNetWriter, value: Variant) -> void:
+	var write_old := func(w: GSNetWriter, value: Variant) -> void:
 		var a: PackedFloat32Array = value if value is PackedFloat32Array else PackedFloat32Array()
 		w.write_bool(a.size() == N)
 		if a.size() == N:
 			for f in a:
 				w.write_float32(f)
-	var read_old := func(r: DotNetReader) -> Variant:
+	var read_old := func(r: GSNetReader) -> Variant:
 		var a := PackedFloat32Array()
 		if r.read_bool():
 			a.resize(N)
 			for i in N:
 				a[i] = r.read_float32()
 		return a
-	var old := DotNetVar.make(&"x", DotNetVar.Type.CUSTOM).codec(write_old, read_old)
-	var packed := DotNetVar.make(&"x", DotNetVar.Type.FLOAT).of_length(N)
+	var old := GSNetVar.make(&"x", GSNetVar.Type.CUSTOM).codec(write_old, read_old)
+	var packed := GSNetVar.make(&"x", GSNetVar.Type.FLOAT).of_length(N)
 	var odd := PackedFloat32Array([NAN, -0.0, INF, -INF, 1.0e-45, -1.0e-40, 3.4e38, 1.0e39, 0.1, -7.25, 1.0, 0.0, 65504.0, -1.0e-30])
 	var values: Array = [odd, PackedFloat32Array(), PackedFloat32Array([1.0, 2.0]), null, 3.5, [1.0], PackedFloat64Array([1.0])]
 	var rng := RandomNumberGenerator.new()
@@ -229,8 +229,8 @@ func _packed_float32_wire() -> void:
 	var reads_differ := 0
 	for value: Variant in values:
 		for pad in 8:
-			var wa := DotNetWriter.new()
-			var wb := DotNetWriter.new()
+			var wa := GSNetWriter.new()
+			var wb := GSNetWriter.new()
 			wa.write_uint(0, pad + 1)
 			wb.write_uint(0, pad + 1)
 			old.write(wa, value)
@@ -238,33 +238,33 @@ func _packed_float32_wire() -> void:
 			if wa.to_bytes() != wb.to_bytes() or wa.bit_length() != wb.bit_length():
 				bytes_differ += 1
 				continue
-			var ra := DotNetReader.new(wa.to_bytes())
-			var rb := DotNetReader.new(wb.to_bytes())
+			var ra := GSNetReader.new(wa.to_bytes())
+			var rb := GSNetReader.new(wb.to_bytes())
 			ra.seek_bits(pad + 1)
 			rb.seek_bits(pad + 1)
 			if var_to_bytes(old.read(ra)) != var_to_bytes(packed.read(rb)) or ra._bit_pos != rb._bit_pos:
 				reads_differ += 1
 	_check("PACKED_FLOAT32: %d values at 8 start bits write a custom codec's bytes (%d differ) and read alike (%d differ)" % [
 			values.size(), bytes_differ, reads_differ],
-		packed.type == DotNetVar.Type.PACKED_FLOAT32 and bytes_differ == 0 and reads_differ == 0)
+		packed.type == GSNetVar.Type.PACKED_FLOAT32 and bytes_differ == 0 and reads_differ == 0)
 	_check("PACKED_FLOAT32: not aligned, %d estimated bits, matches a round trip" % packed.estimated_bits(),
 		not packed.may_align() and packed.estimated_bits() == 1 + 32 * N
 			and packed.matches(odd.duplicate(), packed.wire_value(odd)) == old.matches(odd.duplicate(), old.wire_value(odd))
 			and packed.matches(PackedFloat32Array([1.0]), PackedFloat32Array()))
 	_check("PACKED_FLOAT32: the spec row carries the length",
-		DotNetSimCodec.spec_row(packed, 3).size() == 15 and int(DotNetSimCodec.spec_row(packed, 3)[14]) == N)
+		GSNetSimCodec.spec_row(packed, 3).size() == 15 and int(GSNetSimCodec.spec_row(packed, 3)[14]) == N)
 
 
-func _input_batches_server_half(buffer: DotNetInput.Buffer, writer: DotNetWriter, read: Array) -> void:
+func _input_batches_server_half(buffer: GSNetInput.Buffer, writer: GSNetWriter, read: Array) -> void:
 	# The server's half: a resent copy of a consumed tick is not a late input.
-	var server := DotNetInput.Buffer.new(32)
+	var server := GSNetInput.Buffer.new(32)
 	for input in read:
 		server.push(input)
 	server.take(11)
 	server.take(12)
 	_check("the server's buffer says how far it has consumed", server.last_consumed_tick() == 12)
-	var again := DotNetInput.read_batch(DotNetReader.new(writer.to_bytes()),
-		func() -> DotNetInput: return DemoInput.new())
+	var again := GSNetInput.read_batch(GSNetReader.new(writer.to_bytes()),
+		func() -> GSNetInput: return DemoInput.new())
 	var pushed := 0
 	for input in again:
 		if input.tick > server.last_consumed_tick():
@@ -274,7 +274,7 @@ func _input_batches_server_half(buffer: DotNetInput.Buffer, writer: DotNetWriter
 		pushed == 1 and server.late_count == 0 and server.duplicate_count == 1,
 		)
 	# Lost packet, next one arrives: the lost tick is there before it is due.
-	var lost_then := DotNetInput.Buffer.new(32)
+	var lost_then := GSNetInput.Buffer.new(32)
 	var batch_15 := buffer.recent(3, 15)
 	for input in batch_15:
 		lost_then.push(input)
@@ -287,7 +287,7 @@ func _test_input_batches() -> void:
 	print("")
 	print("[input batches]")
 
-	var buffer := DotNetInput.Buffer.new(32)
+	var buffer := GSNetInput.Buffer.new(32)
 	for tick in [10, 11, 12, 14, 15]:
 		var input := DemoInput.new()
 		input.tick = tick
@@ -300,10 +300,10 @@ func _test_input_batches() -> void:
 	_check("recent() is the newest three at or before a tick, oldest first",
 		recent.size() == 3 and recent[0].tick == 11 and recent[2].tick == 14)
 
-	var writer := DotNetWriter.new()
-	DotNetInput.write_batch(writer, recent)
-	var read := DotNetInput.read_batch(DotNetReader.new(writer.to_bytes()),
-		func() -> DotNetInput: return DemoInput.new())
+	var writer := GSNetWriter.new()
+	GSNetInput.write_batch(writer, recent)
+	var read := GSNetInput.read_batch(GSNetReader.new(writer.to_bytes()),
+		func() -> GSNetInput: return DemoInput.new())
 	var same := read.size() == 3
 	for i in range(mini(read.size(), 3)):
 		var a: DemoInput = recent[i]
@@ -312,15 +312,15 @@ func _test_input_batches() -> void:
 			and a.move.distance_to(b.move) < 0.01 and absf(a.delta - b.delta) < 0.001
 	_check("a batch round-trips every tick, across a gap, with its fields", same)
 
-	var one := DotNetWriter.new()
+	var one := GSNetWriter.new()
 	recent[2].write(one)
 	print("    one input %d bytes, a batch of three %d" % [one.to_bytes().size(), writer.to_bytes().size()])
 	_check("the copies cost less than a whole input each",
 		writer.to_bytes().size() < one.to_bytes().size() * 3)
 
 	var cut := writer.to_bytes().slice(0, writer.to_bytes().size() - 2)
-	var partial := DotNetInput.read_batch(DotNetReader.new(cut),
-		func() -> DotNetInput: return DemoInput.new())
+	var partial := GSNetInput.read_batch(GSNetReader.new(cut),
+		func() -> GSNetInput: return DemoInput.new())
 	_check("a truncated batch keeps only the inputs it read whole",
 		partial.size() == 2 and partial[1].tick == 12)
 
@@ -335,16 +335,16 @@ func _test_input_lead() -> void:
 	print("[the input lead the server reports]")
 
 	var ctx := _lead_rig()
-	var host: DotNetManager = ctx["host"]
-	var fresh: DotNetManager = ctx["fresh"]
-	var legacy: DotNetManager = ctx["legacy"]
+	var host: GSNetManager = ctx["host"]
+	var fresh: GSNetManager = ctx["fresh"]
+	var legacy: GSNetManager = ctx["legacy"]
 	var link: Dictionary = ctx["link"]
 	var state: Dictionary = ctx["state"]
 	var phase: Dictionary = ctx["phase"]
 
 	_check("the new client says it reads the input lead, the old one does not",
-		host.messages.peer_supports(2, DotNetMessageRegistry.FEATURE_INPUT_LEAD)
-			and not host.messages.peer_supports(3, DotNetMessageRegistry.FEATURE_INPUT_LEAD))
+		host.messages.peer_supports(2, GSNetMessageRegistry.FEATURE_INPUT_LEAD)
+			and not host.messages.peer_supports(3, GSNetMessageRegistry.FEATURE_INPUT_LEAD))
 
 
 	var run := func(seconds: float) -> void:
@@ -402,8 +402,8 @@ func _test_input_lead() -> void:
 		int(phase[2]["lead_min"]) <= settled_fresh and slow_lead > settled_fresh)
 
 	for m in [host, fresh, legacy]:
-		(m as DotNetManager).stop()
-		(m as DotNetManager).queue_free()
+		(m as GSNetManager).stop()
+		(m as GSNetManager).queue_free()
 
 	_check_stray_lead()
 	_check_server_pace()
@@ -413,7 +413,7 @@ func _check_stray_lead() -> void:
 	# A host that stamps its own lead (every game's headless_net harness stamps `_tick + 2`)
 	# hears about commands the clock did not stamp: each report asks a tick more than the clock
 	# has given, whatever it gives. Capped, it stops (7 ticks ahead); uncapped it ran 29 ahead in 10 s.
-	var stray := DotNetClock.new(60)
+	var stray := GSNetClock.new(60)
 	stray.sync_from_server(100, 20.0)
 	var server_at := 100
 	var stray_lead := 0
@@ -456,18 +456,18 @@ func _visit_rig(rate: int, down: Array, link: Dictionary, one_way: float) -> Arr
 	var host := _parts_manager("DropServer%d" % rate, true, 1200)
 	var guest := _parts_manager("DropClient%d" % rate, false, 1200)
 	for m in [host, guest]:
-		(m as DotNetManager).config.tick_rate = rate
-		(m as DotNetManager).config.snapshot_rate = 32
-		(m as DotNetManager).clock.tick_rate = rate
+		(m as GSNetManager).config.tick_rate = rate
+		(m as GSNetManager).config.snapshot_rate = 32
+		(m as GSNetManager).clock.tick_rate = rate
 	guest.clock.follow_engine_time = false
 
 	host.send_fn = func(_peer: int, payload: PackedByteArray, d: int) -> void:
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			var _schema := guest.receive(payload, 1)
 			return
 		down.append([float(link["now"]) + one_way, payload])
 	guest.send_fn = func(_peer: int, payload: PackedByteArray, d: int) -> void:
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			var _adopted := host.receive(payload, 2)
 	host.start()
 	guest.start()
@@ -486,8 +486,8 @@ func _first_visit(rate: int, cap: int, stalls: Array, follow: bool, slow_seconds
 	var link := {"now": 0.0}
 	var one_way := 50.0
 	var pair := _visit_rig(rate, down, link, one_way)
-	var host: DotNetManager = pair[0]
-	var guest: DotNetManager = pair[1]
+	var host: GSNetManager = pair[0]
+	var guest: GSNetManager = pair[1]
 
 	var buffer := host.input_buffer_for(2)
 	var step_ms := 1000.0 / float(rate)
@@ -509,7 +509,7 @@ func _first_visit(rate: int, cap: int, stalls: Array, follow: bool, slow_seconds
 			server["tick"] = int(server["tick"]) + 1
 			link["now"] = float(server["tick"]) * step_ms
 			while not up.is_empty() and float(up[0][0]) <= float(link["now"]):
-				var input: DotNetInput = up.pop_front()[1]
+				var input: GSNetInput = up.pop_front()[1]
 				# How early it came, in the server's own terms: ticks before the one it simulates next.
 				(out["arrivals"] as Array).append(Vector2(float(link["now"]) - stalls_end, float(input.tick - int(server["tick"]))))
 				var _pushed := buffer.push(input)
@@ -579,10 +579,10 @@ func _first_visit(rate: int, cap: int, stalls: Array, follow: bool, slow_seconds
 	return out
 
 
-func _free_visit_managers(host: DotNetManager, guest: DotNetManager) -> void:
+func _free_visit_managers(host: GSNetManager, guest: GSNetManager) -> void:
 	for m in [host, guest]:
-		(m as DotNetManager).stop()
-		(m as DotNetManager).queue_free()
+		(m as GSNetManager).stop()
+		(m as GSNetManager).queue_free()
 
 
 ## A ping measured across a stall must not become the round trip.
@@ -590,7 +590,7 @@ func _cover_stalls_ping() -> void:
 	# A web game's ping measured across a 10.7 s stall read 14.8 s, and every snapshot after carried
 	# it as the round trip, running the lead to 800 ticks. Armed: a round trip a stall explains
 	# is held near the median.
-	var web := DotNetClock.new(64)
+	var web := GSNetClock.new(64)
 	web.follow_engine_time = false
 	web.sync_from_server(1000, 88.0)
 	var frame := 0
@@ -618,7 +618,7 @@ func _cover_stalls_ping() -> void:
 
 	# A client that runs at 3 frames a second has a "stall" in every frame; a real 600 ms link must
 	# still be believed, or the clock never adapts to it.
-	var slow := DotNetClock.new(64)
+	var slow := GSNetClock.new(64)
 	slow.follow_engine_time = false
 	slow.sync_from_server(1000, 40.0)
 	frame = 0
@@ -636,7 +636,7 @@ func _cover_stalls_ping() -> void:
 		slow.rtt_ms() > 500.0)
 
 	# A big stall followed by a run of 0.3 s frames must still explain the ping across it.
-	var burst := DotNetClock.new(64)
+	var burst := GSNetClock.new(64)
 	burst.follow_engine_time = false
 	burst.sync_from_server(1000, 88.0)
 	frame = 0
@@ -678,9 +678,9 @@ func _check_server_pace() -> void:
 
 ## 40 s of a hand-driven 60 Hz clock against a server ticking [param pace] of that, a snapshot per server tick echoing the latest command at once.
 ## Returns the pace, the most ticks ahead of the server in the last 10 s, and the snaps after the first 10 s. The lead run up before the pace is
-## measured is given back at [constant DotNetClock.LEAD_RAISE_RATE]; at the nominal rate it never stops growing and snaps.
+## measured is given back at [constant GSNetClock.LEAD_RAISE_RATE]; at the nominal rate it never stops growing and snaps.
 func _paced_run(pace: float) -> Dictionary:
-	var clock := DotNetClock.new(60)
+	var clock := GSNetClock.new(60)
 	clock.follow_engine_time = false
 	clock.sync_from_server(100, 20.0)
 	var server_at := 100.0

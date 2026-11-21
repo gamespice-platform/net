@@ -1,5 +1,5 @@
 @tool
-class_name DotNetVar
+class_name GSNetVar
 extends Resource
 
 ## A declaration that one property is replicated, and how.
@@ -90,7 +90,7 @@ enum Audience {
 
 ## Whether the owning client's simulation computes this property. False for state only the server
 ## writes (a score, a challenge's progress): a predicted entity takes the server's value as it arrives,
-## and the comparison that lets [member DotNetConfig.skip_matching_replays] skip a replay ignores it.
+## and the comparison that lets [member GSNetConfig.skip_matching_replays] skip a replay ignores it.
 @export var client_predicts: bool = true
 
 ## Entries in a [constant Type.PACKED_FLOAT32] array. See [method of_length].
@@ -101,18 +101,18 @@ enum Audience {
 ## Signature: [code]func(old_value: Variant, new_value: Variant) -> void[/code].
 var change_handler: Callable = Callable()
 
-## Custom encoder. Signature: [code]func(writer: DotNetWriter, value: Variant) -> void[/code].
+## Custom encoder. Signature: [code]func(writer: GSNetWriter, value: Variant) -> void[/code].
 var write_fn: Callable = Callable()
 
-## Custom decoder. Signature: [code]func(reader: DotNetReader) -> Variant[/code].
+## Custom decoder. Signature: [code]func(reader: GSNetReader) -> Variant[/code].
 var read_fn: Callable = Callable()
 
 ## Resolved at registration from the owning manager's config.
-var _config: DotNetConfig = null
+var _config: GSNetConfig = null
 
 
-static func make(p_property: StringName, p_type: Type) -> DotNetVar:
-	var v := DotNetVar.new()
+static func make(p_property: StringName, p_type: Type) -> GSNetVar:
+	var v := GSNetVar.new()
 	v.property = p_property
 	v.type = p_type
 	return v
@@ -121,68 +121,68 @@ static func make(p_property: StringName, p_type: Type) -> DotNetVar:
 # Chained rather than positional because a property declaration reads as a
 # sentence, and a call with nine optional arguments does not.
 
-func bits(count: int) -> DotNetVar:
+func bits(count: int) -> GSNetVar:
 	bit_width = clampi(count, 1, 64)
 	return self
 
 
-func range_of(p_min: float, p_max: float) -> DotNetVar:
+func range_of(p_min: float, p_max: float) -> GSNetVar:
 	min_value = p_min
 	max_value = p_max
 	return self
 
 
-func interpolated(enabled: bool = true) -> DotNetVar:
+func interpolated(enabled: bool = true) -> GSNetVar:
 	interpolate = enabled
 	return self
 
 
-func to_owner_only() -> DotNetVar:
+func to_owner_only() -> GSNetVar:
 	audience = Audience.OWNER
 	return self
 
 
-func to_observers_only() -> DotNetVar:
+func to_observers_only() -> GSNetVar:
 	audience = Audience.OBSERVERS
 	return self
 
 
-func at_most(times_per_second: float) -> DotNetVar:
+func at_most(times_per_second: float) -> GSNetVar:
 	max_rate = times_per_second
 	return self
 
 
-func with_priority(value: float) -> DotNetVar:
+func with_priority(value: float) -> GSNetVar:
 	priority = value
 	return self
 
 
-func once() -> DotNetVar:
+func once() -> GSNetVar:
 	on_spawn_only = true
 	return self
 
 
-func with_epsilon(value: float) -> DotNetVar:
+func with_epsilon(value: float) -> GSNetVar:
 	epsilon = value
 	return self
 
 
 ## See [member client_predicts]. Replication and the deadband are unchanged. (API 17.)
-func server_driven() -> DotNetVar:
+func server_driven() -> GSNetVar:
 	client_predicts = false
 	return self
 
 
-func on_change(handler: Callable) -> DotNetVar:
+func on_change(handler: Callable) -> GSNetVar:
 	change_handler = handler
 	return self
 
 
 ## Makes this a [constant Type.PACKED_FLOAT32] of [param count] floats. GameSpice Sim's snapshot codec
 ## writes and reads it natively; byte for byte the script's, which is the fallback.
-func of_length(count: int) -> DotNetVar:
+func of_length(count: int) -> GSNetVar:
 	if count < 0:
-		push_error("DotNetVar '%s': of_length(%d) is negative." % [property, count])
+		push_error("GSNetVar '%s': of_length(%d) is negative." % [property, count])
 		return self
 	type = Type.PACKED_FLOAT32
 	length = count
@@ -190,19 +190,19 @@ func of_length(count: int) -> DotNetVar:
 
 
 ## Supplies a codec for [constant Type.CUSTOM]. The escape hatch that makes any type replicable.
-func codec(writer_fn: Callable, reader_fn: Callable) -> DotNetVar:
+func codec(writer_fn: Callable, reader_fn: Callable) -> GSNetVar:
 	type = Type.CUSTOM
 	write_fn = writer_fn
 	read_fn = reader_fn
 	return self
 
 
-func bind_config(config: DotNetConfig) -> void:
+func bind_config(config: GSNetConfig) -> void:
 	_config = config
 
 
 ## Writes a value according to this declaration.
-func write(writer: DotNetWriter, value: Variant) -> void:
+func write(writer: GSNetWriter, value: Variant) -> void:
 	match type:
 		Type.BOOL:
 			writer.write_bool(bool(value))
@@ -259,7 +259,7 @@ func write(writer: DotNetWriter, value: Variant) -> void:
 				write_fn.call(writer, value)
 			else:
 				push_error(
-					"DotNetVar '%s' is CUSTOM but has no codec." % property
+					"GSNetVar '%s' is CUSTOM but has no codec." % property
 				)
 
 		Type.PACKED_FLOAT32:
@@ -272,7 +272,7 @@ func write(writer: DotNetWriter, value: Variant) -> void:
 
 
 ## Reads a value according to this declaration.
-func read(reader: DotNetReader) -> Variant:
+func read(reader: GSNetReader) -> Variant:
 	match type:
 		Type.BOOL:
 			return reader.read_bool()
@@ -321,7 +321,7 @@ func read(reader: DotNetReader) -> Variant:
 		Type.CUSTOM:
 			if read_fn.is_valid():
 				return read_fn.call(reader)
-			push_error("DotNetVar '%s' is CUSTOM but has no codec." % property)
+			push_error("GSNetVar '%s' is CUSTOM but has no codec." % property)
 			return null
 
 		Type.PACKED_FLOAT32:
@@ -378,9 +378,9 @@ func wire_value(value: Variant) -> Variant:
 		Type.VECTOR3_RANGE:
 			if _range_direct(min_value, max_value, bit_width):
 				return _snap_vector3(value as Vector3, min_value, max_value, bit_width)
-	var writer := DotNetWriter.new(32)
+	var writer := GSNetWriter.new(32)
 	write(writer, value)
-	return read(DotNetReader.new(writer.to_bytes()))
+	return read(GSNetReader.new(writer.to_bytes()))
 
 
 ## Whether a range can be snapped without the buffers: a valid range and a width whose mask is
@@ -389,7 +389,7 @@ static func _range_direct(p_min: float, p_max: float, bits: int) -> bool:
 	return p_max > p_min and bits >= 1 and bits <= 62
 
 
-## DotNetWriter.write_float_range then DotNetReader.read_float_range, the same operations in the
+## GSNetWriter.write_float_range then GSNetReader.read_float_range, the same operations in the
 ## same order, so the result is the same to the bit.
 static func _snap_range(value: float, p_min: float, p_max: float, bits: int) -> float:
 	var mask := (1 << bits) - 1
@@ -470,9 +470,9 @@ func matches(predicted: Variant, received: Variant) -> bool:
 		Type.CUSTOM, Type.PACKED_FLOAT32:
 			if type == Type.CUSTOM and (not write_fn.is_valid() or not read_fn.is_valid()):
 				return false
-			var w := DotNetWriter.new()
+			var w := GSNetWriter.new()
 			write(w, predicted)
-			var r := DotNetReader.new(w.to_bytes())
+			var r := GSNetReader.new(w.to_bytes())
 			return _values_equal(read(r), received)
 	return false
 
@@ -487,7 +487,7 @@ static func _values_equal(a: Variant, b: Variant) -> bool:
 
 ## Whether this property's encoding may contain byte-aligned data: a string or bytes, which
 ## align before their bytes, or a custom codec, which might. Such an encoding depends on the
-## bit of a byte it starts at; see [method DotNetBehaviour.write_state].
+## bit of a byte it starts at; see [method GSNetBehaviour.write_state].
 func may_align() -> bool:
 	return type == Type.STRING or type == Type.BYTES or type == Type.CUSTOM
 
@@ -544,6 +544,6 @@ func estimated_bits() -> int:
 
 
 func _to_string() -> String:
-	return "DotNetVar(%s: %s, %d bits)" % [
+	return "GSNetVar(%s: %s, %d bits)" % [
 		property, Type.keys()[type], estimated_bits()
 	]

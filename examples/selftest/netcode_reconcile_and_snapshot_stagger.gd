@@ -83,13 +83,13 @@ func _test_reconcile_once_per_frame() -> void:
 	var _a := host.setup()
 	var wire: Array[PackedByteArray] = []
 	host.send_fn = func(_peer: int, payload: PackedByteArray, d: int) -> void:
-		if d == DotNetMessage.Delivery.UNRELIABLE:
+		if d == GSNetMessage.Delivery.UNRELIABLE:
 			wire.append(payload)
 
 	var _c := host.start()
 	host.add_peer(2)
 	host.spawner.register_factory(&"player", _build_player)
-	var on_server: DotNetIdentity = host.spawner.spawn(&"player", 2, Transform3D.IDENTITY, 0).value
+	var on_server: GSNetIdentity = host.spawner.spawn(&"player", 2, Transform3D.IDENTITY, 0).value
 	var moving := _once_mirrors(guests, on_server)
 	var replays_before: Array[int] = [
 		int(guests[0].predictor.describe()["replays"]), int(guests[1].predictor.describe()["replays"])
@@ -148,34 +148,34 @@ func _test_reconcile_once_per_frame() -> void:
 	_free_managers([host] + guests)
 
 
-func _once_mirrors(guests: Array[DotNetManager], on_server: DotNetIdentity) -> Array[Movement]:
+func _once_mirrors(guests: Array[GSNetManager], on_server: GSNetIdentity) -> Array[Movement]:
 	var moving: Array[Movement] = []
 	for guest in guests:
 		var _s := guest.start()
 		guest.spawner.register_factory(&"player", _build_player)
-		var mirror: DotNetIdentity = guest.spawner.spawn_remote(
+		var mirror: GSNetIdentity = guest.spawner.spawn_remote(
 			&"player", on_server.net_id, 2, Transform3D.IDENTITY, 0
 		).value
 		moving.append(mirror.behaviours[0] as Movement)
 	return moving
 
 
-func _once_host() -> DotNetManager:
-	var host := DotNetManager.new()
+func _once_host() -> GSNetManager:
+	var host := GSNetManager.new()
 	host.name = "OnceServer"
 	host.is_server = true
 	host.service_scope = &"once_server"
 	host.local_peer_id = 1
 	host.auto_tick = false
 	host.config_file = ""
-	host.config = DotNetConfig.new()
+	host.config = GSNetConfig.new()
 	host.config.tick_rate = 60
 	host.config.snapshot_rate = 60
 	add_child(host)
 	return host
 
 
-func _once_push_inputs(guests: Array[DotNetManager], moving: Array[Movement], move: Vector2, c: int) -> void:
+func _once_push_inputs(guests: Array[GSNetManager], moving: Array[Movement], move: Vector2, c: int) -> void:
 	for g in range(2):
 		var input := DemoInput.new()
 		input.tick = c
@@ -186,17 +186,17 @@ func _once_push_inputs(guests: Array[DotNetManager], moving: Array[Movement], mo
 		guests[g].predictor.predict(guests[g].registry.predicted(), c, 1.0 / 60.0)
 
 
-func _once_guests(lead: int) -> Array[DotNetManager]:
-	var guests: Array[DotNetManager] = []
+func _once_guests(lead: int) -> Array[GSNetManager]:
+	var guests: Array[GSNetManager] = []
 	for deferred in [false, true]:
-		var guest := DotNetManager.new()
+		var guest := GSNetManager.new()
 		guest.name = "OnceClient_%d" % int(deferred)
 		guest.is_server = false
 		guest.service_scope = StringName("once_client_%d" % int(deferred))
 		guest.local_peer_id = 2
 		guest.auto_tick = false
 		guest.config_file = ""
-		guest.config = DotNetConfig.new()
+		guest.config = GSNetConfig.new()
 		guest.config.tick_rate = 60
 		guest.config.snapshot_rate = 60
 		guest.config.input_margin_ticks = lead
@@ -207,7 +207,7 @@ func _once_guests(lead: int) -> Array[DotNetManager]:
 	return guests
 
 
-## [member DotNetConfig.skip_matching_replays]: a snapshot the prediction already reached replays
+## [member GSNetConfig.skip_matching_replays]: a snapshot the prediction already reached replays
 ## nothing, one it did not is replayed. A replays all, B skips; the server overrules every 16
 ## ticks, so B must make the real corrections ([param own_state]: behaviour keeps its own state).
 func _test_skip_matching_replays(own_state: bool) -> void:
@@ -223,20 +223,20 @@ func _test_skip_matching_replays(own_state: bool) -> void:
 	host.config.snapshot_rate = 60
 	add_child(host)
 
-	# A: replays everything. B: skips, through `DotNetPredictor.predict`. C: skips, through
-	# `DotNetManager.predict_tick`. D: skips but simulates by hand, so the predictor never
+	# A: replays everything. B: skips, through `GSNetPredictor.predict`. C: skips, through
+	# `GSNetManager.predict_tick`. D: skips but simulates by hand, so the predictor never
 	# remembers those ticks and only a snapshot a replay happened to cover can match.
 	var guests := _skip_guests(LEAD)
 	var _a := host.setup()
 	var wire: Array[PackedByteArray] = []
 	host.send_fn = func(_peer: int, payload: PackedByteArray, d: int) -> void:
-		if d == DotNetMessage.Delivery.UNRELIABLE:
+		if d == GSNetMessage.Delivery.UNRELIABLE:
 			wire.append(payload)
 
 	var _c := host.start()
 	host.add_peer(2)
 	host.spawner.register_factory(&"player", _build_player)
-	var on_server: DotNetIdentity = host.spawner.spawn(&"player", 2, Transform3D.IDENTITY, 0).value
+	var on_server: GSNetIdentity = host.spawner.spawn(&"player", 2, Transform3D.IDENTITY, 0).value
 	var moving := _skip_mirrors(guests, on_server, own_state)
 	var before: Array[Dictionary] = []
 	for guest in guests:
@@ -290,12 +290,12 @@ func _test_skip_matching_replays(own_state: bool) -> void:
 	_free_managers([host] + guests)
 
 
-func _skip_mirrors(guests: Array[DotNetManager], on_server: DotNetIdentity, own_state: bool) -> Array[Movement]:
+func _skip_mirrors(guests: Array[GSNetManager], on_server: GSNetIdentity, own_state: bool) -> Array[Movement]:
 	var moving: Array[Movement] = []
 	for guest in guests:
 		var _s := guest.start()
 		guest.spawner.register_factory(&"player", _build_player)
-		var mirror: DotNetIdentity = guest.spawner.spawn_remote(
+		var mirror: GSNetIdentity = guest.spawner.spawn_remote(
 			&"player", on_server.net_id, 2, Transform3D.IDENTITY, 0
 		).value
 		var movement := mirror.behaviours[0] as Movement
@@ -306,18 +306,18 @@ func _skip_mirrors(guests: Array[DotNetManager], on_server: DotNetIdentity, own_
 	return moving
 
 
-func _skip_guests(lead: int, count: int = 4) -> Array[DotNetManager]:
-	var guests: Array[DotNetManager] = []
+func _skip_guests(lead: int, count: int = 4) -> Array[GSNetManager]:
+	var guests: Array[GSNetManager] = []
 	for g in range(count):
 		var skip := g > 0
-		var guest := DotNetManager.new()
+		var guest := GSNetManager.new()
 		guest.name = "SkipClient_%d" % g
 		guest.is_server = false
 		guest.service_scope = StringName("skip_client_%d" % g)
 		guest.local_peer_id = 2
 		guest.auto_tick = false
 		guest.config_file = ""
-		guest.config = DotNetConfig.new()
+		guest.config = GSNetConfig.new()
 		guest.config.tick_rate = 60
 		guest.config.snapshot_rate = 60
 		guest.config.input_margin_ticks = lead
@@ -330,7 +330,7 @@ func _skip_guests(lead: int, count: int = 4) -> Array[DotNetManager]:
 	return guests
 
 
-func _skip_checks(host: DotNetManager, guests: Array[DotNetManager], moving: Array[Movement], before: Array[Dictionary], worst_apart: float, final_apart: float, overruled: int, ticks: int, lead: int) -> void:
+func _skip_checks(host: GSNetManager, guests: Array[GSNetManager], moving: Array[Movement], before: Array[Dictionary], worst_apart: float, final_apart: float, overruled: int, ticks: int, lead: int) -> void:
 	var hp := host.perf_counters()
 	_check("the server counts its ticks and their send time (%d ticks, %d us)" % [int(hp[&"server_ticks"]), int(hp[&"server_send_usec"])],
 		int(hp[&"server_ticks"]) == ticks and int(hp[&"server_send_usec"]) > 0)
@@ -373,16 +373,16 @@ func _skip_checks(host: DotNetManager, guests: Array[DotNetManager], moving: Arr
 	var raw := DemoInput.new()
 	raw.tick = 7
 	raw.move = Vector2(0.123456, -0.654321)
-	var sent := DotNetWriter.new()
+	var sent := GSNetWriter.new()
 	raw.write(sent)
 	var decoded := DemoInput.new()
-	decoded.read(DotNetReader.new(sent.to_bytes()))
+	decoded.read(GSNetReader.new(sent.to_bytes()))
 	raw.round_trip()
 	_check("round_trip rounds an input to what the server decodes (%s against %s)" % [raw.move, decoded.move],
 		raw.move == decoded.move and raw.tick == 7 and not is_equal_approx(raw.move.x, 0.123456))
 
 
-## [member DotNetConfig.stagger_snapshots]: each peer still gets a snapshot every
+## [member GSNetConfig.stagger_snapshots]: each peer still gets a snapshot every
 ## ticks_per_snapshot() ticks, on its own phase. Run both ways, or staggering could not be
 ## told from a server that sent to everybody at once.
 func _test_staggered_snapshots() -> void:
@@ -393,14 +393,14 @@ func _test_staggered_snapshots() -> void:
 	var by_mode := {}
 
 	for staggered in [false, true]:
-		var host := DotNetManager.new()
+		var host := GSNetManager.new()
 		host.name = "StaggerHost%s" % ("On" if staggered else "Off")
 		host.is_server = true
 		host.service_scope = &"stagger"
 		host.local_peer_id = 1
 		host.auto_tick = false
 		host.config_file = ""
-		host.config = DotNetConfig.new()
+		host.config = GSNetConfig.new()
 		host.config.tick_rate = 128
 		host.config.snapshot_rate = 32
 		host.config.stagger_snapshots = staggered
@@ -410,7 +410,7 @@ func _test_staggered_snapshots() -> void:
 		var current := [0]
 		var sends := {}
 		host.send_fn = func(peer_id: int, _payload: PackedByteArray, d: int) -> void:
-			if d != DotNetMessage.Delivery.UNRELIABLE:
+			if d != GSNetMessage.Delivery.UNRELIABLE:
 				return
 			if not sends.has(peer_id):
 				sends[peer_id] = []
@@ -466,15 +466,15 @@ func _test_staggered_snapshots() -> void:
 	_sections_completed += 1
 
 
-func _reorder_manager(node_name: String, scope: StringName, server_side: bool, peer: int) -> DotNetManager:
-	var manager := DotNetManager.new()
+func _reorder_manager(node_name: String, scope: StringName, server_side: bool, peer: int) -> GSNetManager:
+	var manager := GSNetManager.new()
 	manager.name = node_name
 	manager.is_server = server_side
 	manager.service_scope = scope
 	manager.local_peer_id = peer
 	manager.auto_tick = false
 	manager.config_file = ""
-	manager.config = DotNetConfig.new()
+	manager.config = GSNetConfig.new()
 	manager.config.tick_rate = 60
 	manager.config.snapshot_rate = 20
 	add_child(manager)
@@ -497,7 +497,7 @@ func _reorder_run(every_other: bool) -> void:
 	host.send_fn = func(peer_id: int, payload: PackedByteArray, d: int) -> void:
 		if peer_id != 2:
 			return
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			var _schema := watcher.receive(payload, 1)
 			return
 		sent.append(payload)
@@ -510,7 +510,7 @@ func _reorder_run(every_other: bool) -> void:
 
 	# Somebody else's entity: this client only watches it.
 	var spawned := host.spawner.spawn(&"player", 3, Transform3D.IDENTITY, 0)
-	var server_entity: DotNetIdentity = spawned.value
+	var server_entity: GSNetIdentity = spawned.value
 	var _mirror := watcher.spawner.spawn_remote(&"player", server_entity.net_id, 3, Transform3D.IDENTITY, 0)
 	var client_entity := watcher.registry.get_identity(server_entity.net_id)
 	var on_server := server_entity.behaviours[0] as Movement
@@ -588,15 +588,15 @@ func _test_reordered_and_repeated() -> void:
 	_sections_completed += 1
 
 
-func _parts_manager(label: String, server: bool, mtu: int, native: bool = false) -> DotNetManager:
-	var manager := DotNetManager.new()
+func _parts_manager(label: String, server: bool, mtu: int, native: bool = false) -> GSNetManager:
+	var manager := GSNetManager.new()
 	manager.name = label
 	manager.is_server = server
 	manager.service_scope = StringName(label.to_lower())
 	manager.local_peer_id = 1 if server else 2
 	manager.auto_tick = false
 	manager.config_file = ""
-	manager.config = DotNetConfig.new()
+	manager.config = GSNetConfig.new()
 	manager.config.tick_rate = 60
 	# A snapshot every tick, so each server_tick below is one snapshot.
 	manager.config.snapshot_rate = 60
@@ -613,18 +613,18 @@ func _parts_manager(label: String, server: bool, mtu: int, native: bool = false)
 
 ## The entity count in a snapshot part's header.
 func _part_count(payload: PackedByteArray) -> int:
-	var reader := DotNetReader.new(payload)
+	var reader := GSNetReader.new(payload)
 	var _tick := reader.read_uint(32)
 	return reader.read_uint(12)
 
 
 ## Where a snapshot's entities end, read with [param client]'s declarations.
-func _bits_before_trailer(payload: PackedByteArray, client: DotNetManager) -> int:
-	var reader := DotNetReader.new(payload)
+func _bits_before_trailer(payload: PackedByteArray, client: GSNetManager) -> int:
+	var reader := GSNetReader.new(payload)
 	var _tick := reader.read_uint(32)
 	var count := reader.read_uint(12)
 	for _i in count:
-		var net_id := reader.read_uint(DotNetRegistry.ID_BITS)
+		var net_id := reader.read_uint(GSNetRegistry.ID_BITS)
 		var behaviours := reader.read_uint(6)
 		var identity := client.registry.get_identity(net_id)
 		if identity == null:
@@ -640,12 +640,12 @@ func _lead_rig() -> Dictionary:
 	var fresh := _parts_manager("LeadClient", false, 1200)
 	var legacy := _parts_manager("LeadLegacy", false, 1200)
 	legacy.local_peer_id = 3
-	legacy.messages.features = DotNetMessageRegistry.FEATURE_UNCHANGED_RUNS
+	legacy.messages.features = GSNetMessageRegistry.FEATURE_UNCHANGED_RUNS
 	# Twenty snapshots a second, as most games here send: the receive timeline steps back a
 	# tick only after sixteen arrivals behind it, so a timeline the drift carried ahead stays
 	# there for most of a second a tick.
 	for m in [host, fresh, legacy]:
-		(m as DotNetManager).config.snapshot_rate = 20
+		(m as GSNetManager).config.snapshot_rate = 20
 
 	var clients := {2: fresh, 3: legacy}
 	# [arrival ms, payload] in flight, each direction, each client.
@@ -654,15 +654,15 @@ func _lead_rig() -> Dictionary:
 	var link := {"one_way": 40.0, "now": 0.0}
 
 	host.send_fn = func(peer_id: int, payload: PackedByteArray, d: int) -> void:
-		if d != DotNetMessage.Delivery.UNRELIABLE:
-			var _schema := (clients[peer_id] as DotNetManager).receive(payload, 1)
+		if d != GSNetMessage.Delivery.UNRELIABLE:
+			var _schema := (clients[peer_id] as GSNetManager).receive(payload, 1)
 			return
 		(down[peer_id] as Array).append([float(link["now"]) + float(link["one_way"]), payload])
 	fresh.send_fn = func(_peer: int, payload: PackedByteArray, d: int) -> void:
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			var _adopted := host.receive(payload, 2)
 	legacy.send_fn = func(_peer: int, payload: PackedByteArray, d: int) -> void:
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			var _adopted := host.receive(payload, 3)
 
 	host.start()
@@ -680,7 +680,7 @@ func _lead_rig() -> Dictionary:
 
 ## Runs [param seconds] of the rig at 60 frames a second, filling ctx["phase"] per client.
 func _lead_phase(ctx: Dictionary, seconds: float) -> void:
-	var host: DotNetManager = ctx["host"]
+	var host: GSNetManager = ctx["host"]
 	var clients: Dictionary = ctx["clients"]
 	var down: Dictionary = ctx["down"]
 	var up: Dictionary = ctx["up"]
@@ -712,7 +712,7 @@ func _lead_phase(ctx: Dictionary, seconds: float) -> void:
 		host.server_tick(int(state["frame"]))
 
 		for peer in [2, 3]:
-			var client: DotNetManager = clients[peer]
+			var client: GSNetManager = clients[peer]
 			var queue: Array = down[peer]
 			var p: Dictionary = phase[peer]
 			while not queue.is_empty() and float(queue[0][0]) <= now:
@@ -722,7 +722,7 @@ func _lead_phase(ctx: Dictionary, seconds: float) -> void:
 					state["legacy_snapshots"] = int(state["legacy_snapshots"]) + 1
 				client.stats.note_rtt(float(state["enet_rtt"]))
 				var _r := client.receive_snapshot(payload)
-				p["newest"] = maxi(int(p["newest"]), DotNetReader.new(payload).read_uint(32))
+				p["newest"] = maxi(int(p["newest"]), GSNetReader.new(payload).read_uint(32))
 			var ticks := client.clock.advance(1.0 / 60.0)
 			for i in ticks:
 				if not client.clock.is_synced():

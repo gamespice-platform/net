@@ -15,13 +15,13 @@ func _test_acked_baselines() -> void:
 	var first := _make_entity(&"player", 0)
 	add_child(first.get_parent())
 	var shared := first.behaviours[0] as Movement
-	shared._bind(DotNetConfig.new())
+	shared._bind(GSNetConfig.new())
 	shared.position = Vector3(1, 2, 3)
 	shared.health = 55
 
 	var to_seven := shared.collect_dirty(7, false)
 	_check("peer 7 is owed everything", to_seven.size() == 4)
-	shared.write_state(DotNetWriter.new(), to_seven, 7, 100)
+	shared.write_state(GSNetWriter.new(), to_seven, 7, 100)
 
 	# The bug: dirty tracking was one dictionary on the behaviour, so serving peer 7
 	# marked the properties clean for everybody and peer 8 was sent nothing at all.
@@ -31,7 +31,7 @@ func _test_acked_baselines() -> void:
 			% to_eight.size(),
 		to_eight.size() == 4
 	)
-	shared.write_state(DotNetWriter.new(), to_eight, 8, 100)
+	shared.write_state(GSNetWriter.new(), to_eight, 8, 100)
 
 	shared.health = 56
 	_check("a change is dirty for peer 7 again", shared.collect_dirty(7, false).size() == 1)
@@ -50,15 +50,15 @@ func _test_acked_baselines() -> void:
 		_out_of_tree(entity)
 
 
-func _acked_untracked() -> DotNetIdentity:
+func _acked_untracked() -> GSNetIdentity:
 	# The pre-existing behaviour, and what a host that has not wired acks still gets.
 	var untracked := _make_entity(&"player", 0)
 	add_child(untracked.get_parent())
 	var optimistic := untracked.behaviours[0] as Movement
-	optimistic._bind(DotNetConfig.new())
-	optimistic.write_state(DotNetWriter.new(), optimistic.collect_dirty(7, true), 7, 100)
+	optimistic._bind(GSNetConfig.new())
+	optimistic.write_state(GSNetWriter.new(), optimistic.collect_dirty(7, true), 7, 100)
 	optimistic.health = 42
-	optimistic.write_state(DotNetWriter.new(), optimistic.collect_dirty(7, false), 7, 110)
+	optimistic.write_state(GSNetWriter.new(), optimistic.collect_dirty(7, false), 7, 110)
 	optimistic.trim_pending(7, 200)
 	_check(
 		"an unacknowledged send ages out as delivered when no acks arrive",
@@ -67,23 +67,23 @@ func _acked_untracked() -> DotNetIdentity:
 	return untracked
 
 
-func _acked_lost_property() -> DotNetIdentity:
+func _acked_lost_property() -> GSNetIdentity:
 	var lonely := _make_entity(&"player", 0)
 	add_child(lonely.get_parent())
 	var tracked := lonely.behaviours[0] as Movement
-	tracked._bind(DotNetConfig.new())
+	tracked._bind(GSNetConfig.new())
 
 	# Tick 100 lands. Tick 110 carries health and is lost. Tick 120 lands.
-	tracked.write_state(DotNetWriter.new(), tracked.collect_dirty(7, true), 7, 100)
+	tracked.write_state(GSNetWriter.new(), tracked.collect_dirty(7, true), 7, 100)
 	tracked.sync_peer_acks(7, 100, true)
 
 	tracked.health = 42
 	var carried := tracked.collect_dirty(7, false)
 	_check("the changed property is owed", carried.size() == 1)
-	tracked.write_state(DotNetWriter.new(), carried, 7, 110)
+	tracked.write_state(GSNetWriter.new(), carried, 7, 110)
 
 	tracked.position = Vector3(9, 0, 0)
-	tracked.write_state(DotNetWriter.new(), tracked.collect_dirty(7, false), 7, 120)
+	tracked.write_state(GSNetWriter.new(), tracked.collect_dirty(7, false), 7, 120)
 
 	# The peer acknowledges 120 without ever acknowledging 110: 110 did not arrive,
 	# and a snapshot older than one already applied is superseded rather than late.
@@ -103,22 +103,22 @@ func _acked_lost_property() -> DotNetIdentity:
 ## Far rings: an entity left out of snapshots 110..130 is synced only when it is collected again,
 ## by when the newest ack is 130. Its sends at 100 and 110 were acked on their own ticks, so the
 ## acked ring promotes them; only the newest ack would have read them as lost and resent both.
-func _acked_thinned() -> DotNetIdentity:
+func _acked_thinned() -> GSNetIdentity:
 	var thinned := _make_entity(&"player", 0)
 	add_child(thinned.get_parent())
 	var far := thinned.behaviours[0] as Movement
-	far._bind(DotNetConfig.new())
+	far._bind(GSNetConfig.new())
 	far.sync_peer_acks(7, 1, true)
 
 	var ring := PackedInt64Array()
 	ring.resize(64)
 	ring.fill(-1)
-	far.write_state(DotNetWriter.new(), far.collect_dirty(7, true), 7, 100)
+	far.write_state(GSNetWriter.new(), far.collect_dirty(7, true), 7, 100)
 	ring[100 % 64] = 100
 	far.health = 42
-	far.write_state(DotNetWriter.new(), far.collect_dirty(7, false), 7, 110)
+	far.write_state(GSNetWriter.new(), far.collect_dirty(7, false), 7, 110)
 	far.position = Vector3(9, 0, 0)
-	far.write_state(DotNetWriter.new(), far.collect_dirty(7, false), 7, 115)
+	far.write_state(GSNetWriter.new(), far.collect_dirty(7, false), 7, 115)
 	for acked in [110, 120, 130]:
 		ring[acked % 64] = acked
 	# 115 was not acked; its slot holds 179 (a stale wrap), and only an exact match promotes.
@@ -135,15 +135,15 @@ func _acked_thinned() -> DotNetIdentity:
 	return thinned
 
 
-func _acked_rate_limit() -> DotNetIdentity:
+func _acked_rate_limit() -> GSNetIdentity:
 	# Rate limiting was shared the same way: one peer's send silenced the property
 	# for every other peer, not just for the one that had just been given it.
 	var limited := _make_entity(&"player", 0)
 	add_child(limited.get_parent())
 	var capped := limited.behaviours[0] as Movement
-	capped._bind(DotNetConfig.new())
+	capped._bind(GSNetConfig.new())
 	capped.find_var(&"health").at_most(1.0)
-	capped.write_state(DotNetWriter.new(), capped.collect_dirty(7, true), 7, 100)
+	capped.write_state(GSNetWriter.new(), capped.collect_dirty(7, true), 7, 100)
 	capped.health = 70
 	var eight_capped := false
 	for declaration in capped.collect_dirty(8, false):
@@ -168,7 +168,7 @@ func _acked_rate_limit() -> DotNetIdentity:
 	return limited
 
 
-## [member DotNetConfig.share_dirty_sets] against the per-peer rule it short-cuts, on two copies
+## [member GSNetConfig.share_dirty_sets] against the per-peer rule it short-cuts, on two copies
 ## of one entity through the same snapshots (loss, late acks, interest, budget, owed predicted
 ## state). Every peer's dirty set and bytes must match both ways, and the shared path be taken.
 func _test_shared_dirty_sets() -> void:
@@ -257,9 +257,9 @@ func _share_collect(copies: Array[Sharing], peer: int, owner: int, snapshot: int
 	var bytes: Array = []
 	var shared := 0
 	for behaviour in copies:
-		# The sharing copy the way DotNetManager asks (one fused call), the other the
+		# The sharing copy the way GSNetManager asks (one fused call), the other the
 		# three calls that are its definition: the two must agree, list and bytes.
-		var dirty: Array[DotNetVar]
+		var dirty: Array[GSNetVar]
 		if behaviour == copies[0]:
 			dirty = behaviour.collect_for_peer(peer, acked_tick, strict, tick - 32 * 4, peer == owner)
 		else:
@@ -270,7 +270,7 @@ func _share_collect(copies: Array[Sharing], peer: int, owner: int, snapshot: int
 		for declaration in dirty:
 			names.append(declaration.property)
 		lists.append(names)
-		var writer := DotNetWriter.new()
+		var writer := GSNetWriter.new()
 		# Entities start at any bit of a byte, so the string's alignment is exercised.
 		if snapshot % 8 > 0:
 			writer.write_bits(0, snapshot % 8)
@@ -289,11 +289,11 @@ func _share_collect(copies: Array[Sharing], peer: int, owner: int, snapshot: int
 func _sharing_copies(owner: int) -> Array[Sharing]:
 	var copies: Array[Sharing] = []
 	for share in [true, false]:
-		var config := DotNetConfig.new()
+		var config := GSNetConfig.new()
 		config.share_dirty_sets = share
-		var identity := DotNetIdentity.new()
+		var identity := GSNetIdentity.new()
 		identity.owner_peer_id = owner
-		identity.authority = DotNetIdentity.Authority.SHARED
+		identity.authority = GSNetIdentity.Authority.SHARED
 		var behaviour := Sharing.new()
 		identity.behaviours = [behaviour]
 		behaviour.identity = identity
@@ -304,7 +304,7 @@ func _sharing_copies(owner: int) -> Array[Sharing]:
 
 ## A run shifted once per bit of a byte and kept against the shift per write it replaced.
 func _check_shifted_runs(sharing: Sharing) -> void:
-	# DotNetBehaviour._shifted is what write_state lays in for every peer after the first
+	# GSNetBehaviour._shifted is what write_state lays in for every peer after the first
 	# at that bit; checked at every bit over a written prefix that is not zero.
 	var source := PackedByteArray([0xA5, 0x3C, 0xFF, 0x01, 0x80])
 	var shifts_agree := true
@@ -314,10 +314,10 @@ func _check_shifted_runs(sharing: Sharing) -> void:
 			data[data.size() - 1] &= (1 << (bits & 7)) - 1
 		var entry := [data, bits, {}, []]
 		for pad in range(1, 8):
-			var per_write := DotNetWriter.new()
+			var per_write := GSNetWriter.new()
 			per_write.write_bits(0x55, pad)
 			per_write.write_shifted_run(data, bits)
-			var kept := DotNetWriter.new()
+			var kept := GSNetWriter.new()
 			kept.write_bits(0x55, pad)
 			kept.write_bit_run(sharing._shifted(entry, pad), pad, pad + bits)
 			if per_write.to_bytes() != kept.to_bytes() or per_write.bit_length() != kept.bit_length():
@@ -443,15 +443,15 @@ func _test_standing_still() -> void:
 
 
 
-func _still_manager(node_name: String, as_server: bool, peer: int, scope: StringName) -> DotNetManager:
-	var m := DotNetManager.new()
+func _still_manager(node_name: String, as_server: bool, peer: int, scope: StringName) -> GSNetManager:
+	var m := GSNetManager.new()
 	m.name = node_name
 	m.is_server = as_server
 	m.service_scope = scope
 	m.local_peer_id = peer
 	m.auto_tick = false
 	m.config_file = ""
-	m.config = DotNetConfig.new()
+	m.config = GSNetConfig.new()
 	m.config.tick_rate = 60
 	m.config.snapshot_rate = 60 / STILL_INTERVAL
 	if not as_server:
@@ -485,7 +485,7 @@ func _still_tail_bytes(bytes: Array[int]) -> int:
 	return tail_bytes
 
 
-func _free_still_managers(host: DotNetManager, guest: DotNetManager) -> void:
+func _free_still_managers(host: GSNetManager, guest: GSNetManager) -> void:
 	host.stop()
 	guest.stop()
 	remove_child(host)
@@ -496,7 +496,7 @@ func _free_still_managers(host: DotNetManager, guest: DotNetManager) -> void:
 
 ## Hooks the host's send (snapshots recorded in [param rec], every fourth dropped when lossy) and,
 ## for a compact run, the guest's schema reply.
-func _still_wire(host: DotNetManager, guest: DotNetManager, lossy: bool, compact: bool, rec: Dictionary) -> void:
+func _still_wire(host: GSNetManager, guest: GSNetManager, lossy: bool, compact: bool, rec: Dictionary) -> void:
 	var wire: Array[Dictionary] = rec["wire"]
 	var sent: Array = rec["sent"]
 	var bytes: Array[int] = rec["bytes"]
@@ -504,7 +504,7 @@ func _still_wire(host: DotNetManager, guest: DotNetManager, lossy: bool, compact
 	var now: Array = rec["now"]
 	host.send_fn = func(_peer: int, payload: PackedByteArray, d: int) -> void:
 		# Snapshots only; see _test_render_delay.
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			return
 		sent[0] += 1
 		bytes.append(payload.size())
@@ -518,18 +518,18 @@ func _still_wire(host: DotNetManager, guest: DotNetManager, lossy: bool, compact
 	# runs below are the format every client before the lists reads.
 	if compact:
 		guest.send_fn = func(_peer: int, payload: PackedByteArray, d: int) -> void:
-			if d != DotNetMessage.Delivery.UNRELIABLE:
+			if d != GSNetMessage.Delivery.UNRELIABLE:
 				var _adopted := host.receive(payload, 2)
 
 
 ## The player on the server and its remote on the guest; their Movement behaviours.
-func _still_spawn(host: DotNetManager, guest: DotNetManager) -> Array:
+func _still_spawn(host: GSNetManager, guest: GSNetManager) -> Array:
 	host.add_peer(2)
 	host.spawner.register_factory(&"player", _build_player)
 	guest.spawner.register_factory(&"player", _build_player)
 
-	var on_server: DotNetIdentity = host.spawner.spawn(&"player", 2, Transform3D.IDENTITY, 0).value
-	var on_client: DotNetIdentity = guest.spawner.spawn_remote(
+	var on_server: GSNetIdentity = host.spawner.spawn(&"player", 2, Transform3D.IDENTITY, 0).value
+	var on_client: GSNetIdentity = guest.spawner.spawn_remote(
 		&"player", on_server.net_id, 2, Transform3D.IDENTITY, 0
 	).value
 	return [on_server.behaviours[0] as Movement, on_client.behaviours[0] as Movement]
@@ -537,7 +537,7 @@ func _still_spawn(host: DotNetManager, guest: DotNetManager) -> Array:
 
 ## Delivers the recorded snapshots at client tick [param c]: how many applied, and how many left the
 ## rewound position away from what the server had at the tick they were built on.
-func _still_deliver(guest: DotNetManager, movement: Movement, wire: Array[Dictionary], server_at: Dictionary, c: int) -> Vector2i:
+func _still_deliver(guest: GSNetManager, movement: Movement, wire: Array[Dictionary], server_at: Dictionary, c: int) -> Vector2i:
 	var applied_count := 0
 	var stale := 0
 	for entry in wire:

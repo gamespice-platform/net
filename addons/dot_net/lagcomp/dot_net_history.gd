@@ -1,4 +1,4 @@
-class_name DotNetHistory
+class_name GSNetHistory
 extends RefCounted
 
 ## Past positions of every entity, so the server can judge a shot the way the shooter saw it. [b]The
@@ -94,7 +94,7 @@ class Track extends RefCounted:
 		return samples[samples.size() - 1].tick if not samples.is_empty() else -1
 
 
-var config: DotNetConfig
+var config: GSNetConfig
 
 ## net_id -> Track
 var _tracks: Dictionary = {}
@@ -106,12 +106,12 @@ var _rewinds: int = 0
 var _refused: int = 0
 
 
-func _init(p_config: DotNetConfig) -> void:
+func _init(p_config: GSNetConfig) -> void:
 	config = p_config
 
 
 ## Records the current state of every entity. Called once per snapshot on the server.
-func record(identities: Array[DotNetIdentity], tick: int) -> void:
+func record(identities: Array[GSNetIdentity], tick: int) -> void:
 	if not config.enable_lag_compensation:
 		return
 
@@ -146,19 +146,19 @@ func _track_for(net_id: int) -> Track:
 ## restore].[/b] Leaving the world rewound means every subsequent operation that tick — physics, other
 ## players' shots, the next snapshot — happens in the past.
 func rewind(
-	identities: Array[DotNetIdentity],
+	identities: Array[GSNetIdentity],
 	target_tick: int,
 	current_tick: int,
 	exclude_net_id: int = 0
-) -> DotResult:
+) -> GSResult:
 	if not config.enable_lag_compensation:
-		return DotResult.fail(
-			DotError.CODE_UNSUPPORTED, "Lag compensation is disabled."
+		return GSResult.fail(
+			GSError.CODE_UNSUPPORTED, "Lag compensation is disabled."
 		)
 
 	if not _rewound.is_empty():
-		return DotResult.fail(
-			DotError.CODE_STATE,
+		return GSResult.fail(
+			GSError.CODE_STATE,
 			"The world is already rewound.",
 			"restore() before rewinding again"
 		)
@@ -166,8 +166,8 @@ func rewind(
 	var behind := current_tick - target_tick
 
 	if behind < 0:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"Cannot rewind to a future tick.",
 			"target %d, current %d" % [target_tick, current_tick]
 		)
@@ -181,7 +181,7 @@ func rewind(
 	if behind > max_ticks:
 		_refused += 1
 		clamped_tick = current_tick - max_ticks
-		DotLog.debug(
+		GSLog.debug(
 			CHANNEL,
 			"rewind clamped to the maximum",
 			{"asked": behind, "max": max_ticks}
@@ -210,7 +210,7 @@ func rewind(
 
 	_rewinds += 1
 
-	return DotResult.success({
+	return GSResult.success({
 		"rewound": _rewound.size(),
 		"tick": clamped_tick,
 		"ticks_back": current_tick - clamped_tick,
@@ -224,7 +224,7 @@ func restore() -> int:
 
 	for net_id in _rewound:
 		var entry: Dictionary = _rewound[net_id]
-		var identity: DotNetIdentity = entry["identity"]
+		var identity: GSNetIdentity = entry["identity"]
 
 		# Taken out of the tree between the rewind and here — by the test itself, say
 		# a kill that despawns — is left where it is, for the same reason as above.
@@ -237,7 +237,7 @@ func restore() -> int:
 
 ## Runs [param body] with the world rewound, restoring afterwards. The safe form, and the one to use.
 func with_rewind(
-	identities: Array[DotNetIdentity],
+	identities: Array[GSNetIdentity],
 	target_tick: int,
 	current_tick: int,
 	exclude_net_id: int,
@@ -257,21 +257,21 @@ func with_rewind(
 
 ## Whether an identity's entity is a live node in the scene tree — the only kind whose
 ## global transform can be read or written without an engine error.
-static func _in_world(identity: DotNetIdentity) -> bool:
+static func _in_world(identity: GSNetIdentity) -> bool:
 	if identity == null or identity.entity == null or not is_instance_valid(identity.entity):
 		return false
 
 	return (identity.entity as Node).is_inside_tree()
 
 
-static func _current_rotation(identity: DotNetIdentity) -> Quaternion:
+static func _current_rotation(identity: GSNetIdentity) -> Quaternion:
 	if identity.entity is Node3D:
 		return (identity.entity as Node3D).global_basis.get_rotation_quaternion()
 	return Quaternion.IDENTITY
 
 
 static func _apply(
-	identity: DotNetIdentity,
+	identity: GSNetIdentity,
 	position: Vector3,
 	rotation: Quaternion
 ) -> void:

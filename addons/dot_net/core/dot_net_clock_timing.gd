@@ -1,6 +1,6 @@
 extends "dot_net_clock_state.gd"
 
-## The timing half of [DotNetClock]: tick reads, round-trip time, stalls and the lead and catch-up thresholds.
+## The timing half of [GSNetClock]: tick reads, round-trip time, stalls and the lead and catch-up thresholds.
 
 
 ## The most a tick is lengthened to give lead back: [constant MAX_DRIFT_RATE], or [constant LEAD_RAISE_RATE] while the latest report says its command arrived more than [constant LEAD_EARLY_TICKS] past the slack early.
@@ -97,7 +97,7 @@ func _note_rtt(rtt_ms: float) -> void:
 		# leaves behind do delay a command, and the spread it adds to the margin covers them.
 		_rtt_rejected += 1
 		var held := _rtt_base + RTT_STALL_SECONDS * 1000.0
-		DotLog.debug(CHANNEL, "round trip held; a stall explains it",
+		GSLog.debug(CHANNEL, "round trip held; a stall explains it",
 			{"rtt": snappedf(rtt_ms, 0.1), "held": snappedf(held, 0.1), "base": snappedf(_rtt_base, 0.1),
 			"held_count": _rtt_rejected})
 		rtt_ms = held

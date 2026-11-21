@@ -5,9 +5,9 @@ extends "dot_net_manager_wire.gd"
 
 ## Builds and sends a snapshot to every peer, filtered and prioritised per peer.
 ## [param phase] and [param period]: only the peers whose id falls on this phase, when
-## snapshots are staggered ([member DotNetConfig.stagger_snapshots]); -1 is every peer.
+## snapshots are staggered ([member GSNetConfig.stagger_snapshots]); -1 is every peer.
 func _send_snapshots(
-	tick: int, identities: Array[DotNetIdentity], phase: int = -1, period: int = 1
+	tick: int, identities: Array[GSNetIdentity], phase: int = -1, period: int = 1
 ) -> void:
 	if config.skip_idle_snapshots and not _peer_due(phase, period):
 		_last_snapshot_tick = tick
@@ -24,7 +24,7 @@ func _send_snapshots(
 	var pooled := workers > 0 and send_fn.is_valid() and not _peers.is_empty()
 	var native := _native_for_snapshot()
 
-	# Before [method DotNetInterest._prepare], which reads positions too (a grid indexes
+	# Before [method GSNetInterest._prepare], which reads positions too (a grid indexes
 	# them): from here to the thaw every interest question is about one instant. Inline too:
 	# a transform read per entity per peer was a third of a 100-player snapshot's interest.
 	for identity in identities:
@@ -40,12 +40,12 @@ func _send_snapshots(
 
 	# No world-wide baseline snapshot: with interest management no two peers were sent the same
 	# entities, so a single baseline is a baseline for nobody. Baselines are per peer, see
-	# [DotNetBehaviour.PeerView].
+	# [GSNetBehaviour.PeerView].
 
 	var sent_to := 0
 
 	# Each property read once for this snapshot rather than once per peer; see
-	# [member DotNetBehaviour._snapshot_reads]. For workers, read all of them now.
+	# [member GSNetBehaviour._snapshot_reads]. For workers, read all of them now.
 	if native == null:
 		for identity in identities:
 			for behaviour in identity.behaviours:
@@ -72,13 +72,13 @@ func _send_snapshots(
 				observer, identities, peer_id, context
 			)
 			if interest.thins():
-				var kept: Array[DotNetIdentity] = []
+				var kept: Array[GSNetIdentity] = []
 				interest.thin_into(kept, observer, relevant, peer_id, context)
 				relevant = kept
 
 			var scores := interest.scores_for(observer, relevant, context)
 
-			# Both caps at once, see [method DotNetConfig.entity_cap]. Applied HERE, not by a score sort
+			# Both caps at once, see [method GSNetConfig.entity_cap]. Applied HERE, not by a score sort
 			# of our own, because prioritise is what pins always_relevant and a plain sort would cut
 			# the observer's own entity.
 			relevant = interest.prioritise(
@@ -86,7 +86,7 @@ func _send_snapshots(
 			)
 			relevant = budget.accumulate(peer_id, relevant, scores)
 			if config.peer_send_budget > 0 and relevant.size() > config.peer_send_budget:
-				var kept: Array[DotNetIdentity] = []
+				var kept: Array[GSNetIdentity] = []
 				_within_send_budget(kept, relevant, observer)
 				relevant = kept
 
@@ -127,37 +127,37 @@ func _peer_due(phase: int, period: int) -> bool:
 
 
 ## The worker count this snapshot is built with: 0 (on the calling thread) unless
-## [member DotNetConfig.snapshot_workers] asks, [method DotParallel.available] and the interest
+## [member GSNetConfig.snapshot_workers] asks, [method GSParallel.available] and the interest
 ## strategy allows. The reason it is 0 when asked for is logged once per change.
 func _snapshot_workers() -> int:
 	var reason := ""
 	var workers := 0
 	if config == null or config.snapshot_workers == 0:
 		reason = "off"
-	elif not DotParallel.available():
+	elif not GSParallel.available():
 		reason = "no worker threads on this platform"
 	elif interest == null or not interest.is_thread_safe():
 		reason = "interest strategy %s is not thread-safe" % (
 			interest.strategy_name if interest != null else "none")
 	else:
-		workers = DotParallel.resolve_workers(config.snapshot_workers)
+		workers = GSParallel.resolve_workers(config.snapshot_workers)
 	if reason != _snapshot_threads_reason:
 		_snapshot_threads_reason = reason
 		if reason != "off" and reason != "":
 			_snapshot_threads_note = "snapshots are built inline (%s)" % reason
 		elif reason == "":
 			_snapshot_threads_note = (
-				"snapshot workers active: %d; interest %s pooled; custom DotNetVar codecs pooled"
+				"snapshot workers active: %d; interest %s pooled; custom GSNetVar codecs pooled"
 				% [workers, interest.strategy_name])
 		if reason != "off":
 			# INFO, once per change: an operator who turned this on wants to see it took or why not.
-			DotLog.info(CHANNEL, _snapshot_threads_note, {
+			GSLog.info(CHANNEL, _snapshot_threads_note, {
 				"workers": workers, "asked": config.snapshot_workers if config != null else 0,
 			})
 	return workers
 
 
-## The native core for this snapshot, made the first time [member DotNetConfig.native] is on,
+## The native core for this snapshot, made the first time [member GSNetConfig.native] is on,
 ## or null for the GDScript path. Turned off, the behaviours it held are handed back.
 func _native_for_snapshot() -> Object:
 	if config == null or not config.native:
@@ -169,21 +169,21 @@ func _native_for_snapshot() -> Object:
 		return null
 	if _native == null and not _native_tried:
 		_native_tried = true
-		var res := DotNetNative.make_core(config)
+		var res := GSNetNative.make_core(config)
 		if res.ok:
 			_reset_send_views()
 			_native = res.value
-			_native_note = "on (%s)" % DotNetNative.describe()["from"]
-			DotLog.info(CHANNEL, "snapshots are built natively", DotNetNative.describe())
+			_native_note = "on (%s)" % GSNetNative.describe()["from"]
+			GSLog.info(CHANNEL, "snapshots are built natively", GSNetNative.describe())
 		else:
 			_native_note = "asked, GDScript in use: %s" % res.error.message
 			# A missing, mismatched or broken library on a desktop is a deployment fault; only a
 			# platform that cannot load one (web, mobile) falls back quietly.
 			var detail := {"reason": res.error.message}
-			if DotPlatform.is_desktop():
-				DotLog.warn(CHANNEL, "native snapshots unavailable; GDScript in use", detail)
+			if GSPlatform.is_desktop():
+				GSLog.warn(CHANNEL, "native snapshots unavailable; GDScript in use", detail)
 			else:
-				DotLog.info(CHANNEL, "native snapshots unavailable; GDScript in use", detail)
+				GSLog.info(CHANNEL, "native snapshots unavailable; GDScript in use", detail)
 	return _native
 
 
@@ -200,7 +200,7 @@ func _reset_send_views() -> void:
 ## here (or on [param workers] as the pooled path does), every peer's parts in the core, then
 ## sent in peer order. The same bytes as either GDScript path.
 func _send_snapshots_native(
-	core: Object, tick: int, identities: Array[DotNetIdentity], phase: int, period: int,
+	core: Object, tick: int, identities: Array[GSNetIdentity], phase: int, period: int,
 	context: Dictionary, workers: int
 ) -> int:
 	var oldest_pending: int = tick - config.ack_window_snapshots * config.ticks_per_snapshot()
@@ -209,7 +209,7 @@ func _send_snapshots_native(
 	var interest_cfg := interest.native_config(config) if core_interest else {}
 	if config.native_interest and send_fn.is_valid() and not core_interest and not _interest_fallback_logged:
 		_interest_fallback_logged = true
-		DotLog.info(CHANNEL, "native_interest is on but this interest strategy is not portable; interest stays in GDScript")
+		GSLog.info(CHANNEL, "native_interest is on but this interest strategy is not portable; interest stays in GDScript")
 	if core_interest:
 		interest_cfg["starvation_ticks"] = budget.starvation_ticks
 		interest_cfg["starvation_weight"] = budget.starvation_weight
@@ -217,7 +217,7 @@ func _send_snapshots_native(
 	var begin_at := Time.get_ticks_usec()
 	core.begin_snapshot(identities, PackedInt64Array([
 		tick, int(context["now_ms"]), config.mtu, oldest_pending, workers,
-		DotNetIdentity.Authority.SHARED, config.native_reads,
+		GSNetIdentity.Authority.SHARED, config.native_reads,
 	]))
 	_ph_begin_usec += Time.get_ticks_usec() - begin_at
 	var jobs: Array[SnapshotJob] = []
@@ -232,10 +232,10 @@ func _send_snapshots_native(
 			job.peer_id = peer_id
 			job.observer = _observer_for(peer_id)
 			if _input_buffers.has(peer_id):
-				job.lead = (_input_buffers[peer_id] as DotNetInput.Buffer).take_lead_sample()
-			job.send_lead = job.lead.x != DotNetInput.Buffer.LEAD_NONE \
-				and messages.peer_supports(peer_id, DotNetMessageRegistry.FEATURE_INPUT_LEAD)
-			job.compact = messages.peer_supports(peer_id, DotNetMessageRegistry.FEATURE_UNCHANGED_RUNS)
+				job.lead = (_input_buffers[peer_id] as GSNetInput.Buffer).take_lead_sample()
+			job.send_lead = job.lead.x != GSNetInput.Buffer.LEAD_NONE \
+				and messages.peer_supports(peer_id, GSNetMessageRegistry.FEATURE_INPUT_LEAD)
+			job.compact = messages.peer_supports(peer_id, GSNetMessageRegistry.FEATURE_UNCHANGED_RUNS)
 			job.acked_tick = int(_acks.get(peer_id, 0))
 			job.acked_ring = acked_ring(peer_id)
 			job.strict = bool(_ack_wired.get(peer_id, false))
@@ -254,7 +254,7 @@ func _send_snapshots_native(
 			var cap := config.entity_cap()
 			var interest_task := func(chunk: int) -> Array:
 				return _interest_chunk(jobs, chunk, chunks, identities, context, cap)
-			DotParallel.run(interest_task, chunks, &"net.snapshot", workers)
+			GSParallel.run(interest_task, chunks, &"net.snapshot", workers)
 	else:
 		for peer_id in _peers:
 			if phase >= 0 and posmod(peer_id, period) != phase:
@@ -263,7 +263,7 @@ func _send_snapshots_native(
 			var observer := _observer_for(peer_id)
 			var relevant := interest.relevant_for(observer, identities, peer_id, context)
 			if interest.thins():
-				var kept: Array[DotNetIdentity] = []
+				var kept: Array[GSNetIdentity] = []
 				interest.thin_into(kept, observer, relevant, peer_id, context)
 				relevant = kept
 			var scores := interest.scores_for(observer, relevant, context)
@@ -272,7 +272,7 @@ func _send_snapshots_native(
 			)
 			relevant = budget.accumulate(peer_id, relevant, scores)
 			if config.peer_send_budget > 0 and relevant.size() > config.peer_send_budget:
-				var kept: Array[DotNetIdentity] = []
+				var kept: Array[GSNetIdentity] = []
 				_within_send_budget(kept, relevant, observer)
 				relevant = kept
 			if not send_fn.is_valid():
@@ -280,10 +280,10 @@ func _send_snapshots_native(
 			var job := SnapshotJob.new()
 			job.peer_id = peer_id
 			if _input_buffers.has(peer_id):
-				job.lead = (_input_buffers[peer_id] as DotNetInput.Buffer).take_lead_sample()
-			job.send_lead = job.lead.x != DotNetInput.Buffer.LEAD_NONE \
-				and messages.peer_supports(peer_id, DotNetMessageRegistry.FEATURE_INPUT_LEAD)
-			job.compact = messages.peer_supports(peer_id, DotNetMessageRegistry.FEATURE_UNCHANGED_RUNS)
+				job.lead = (_input_buffers[peer_id] as GSNetInput.Buffer).take_lead_sample()
+			job.send_lead = job.lead.x != GSNetInput.Buffer.LEAD_NONE \
+				and messages.peer_supports(peer_id, GSNetMessageRegistry.FEATURE_INPUT_LEAD)
+			job.compact = messages.peer_supports(peer_id, GSNetMessageRegistry.FEATURE_UNCHANGED_RUNS)
 			job.acked_tick = int(_acks.get(peer_id, 0))
 			job.acked_ring = acked_ring(peer_id)
 			job.strict = bool(_ack_wired.get(peer_id, false))
@@ -371,7 +371,7 @@ func _apply_native_result(job: SnapshotJob, r: Array, core_interest: bool, conte
 	if not _warned_oversize and int(r[9]) >= 0:
 		_warned_oversize = true
 		var big := registry.get_identity(int(r[9]))
-		DotLog.warn(CHANNEL, "an entity's state alone is bigger than the snapshot MTU; it is sent oversized", {
+		GSLog.warn(CHANNEL, "an entity's state alone is bigger than the snapshot MTU; it is sent oversized", {
 			"net_id": int(r[9]), "prefab": str(big.prefab_id) if big != null else "",
 			"bytes": int(r[10]), "mtu": config.mtu,
 		})
@@ -379,18 +379,18 @@ func _apply_native_result(job: SnapshotJob, r: Array, core_interest: bool, conte
 	var counts: PackedInt32Array = r[2]
 	for index in payloads.size():
 		var payload: PackedByteArray = payloads[index]
-		send_fn.call(peer_id, payload, DotNetMessage.Delivery.UNRELIABLE)
+		send_fn.call(peer_id, payload, GSNetMessage.Delivery.UNRELIABLE)
 		largest_part_bytes = maxi(largest_part_bytes, payload.size())
 		budget.note_packet(peer_id, payload.size())
 		stats.note_sent(payload.size(), counts[index])
-		DotNetCostProbe.note(&"snapshot", DotNetCostProbe.OUT, payload.size())
+		GSNetCostProbe.note(&"snapshot", GSNetCostProbe.OUT, payload.size())
 
 
 ## Snapshots for every peer on this phase, built on [param workers] threads and sent from here in
 ## peer order. Each task writes its own peers' records in place (shared-table inserts are made first);
-## one task per worker, never per peer, so each owns a run of peers and shares its [DotNetBehaviour.EncodeCache].
+## one task per worker, never per peer, so each owns a run of peers and shares its [GSNetBehaviour.EncodeCache].
 func _send_snapshots_pooled(
-	tick: int, identities: Array[DotNetIdentity], phase: int, period: int,
+	tick: int, identities: Array[GSNetIdentity], phase: int, period: int,
 	context: Dictionary, workers: int
 ) -> int:
 	var prep_started := Time.get_ticks_usec()
@@ -411,9 +411,9 @@ func _send_snapshots_pooled(
 	# inline path does) and not for every entity of every peer.
 	var interest_task := func(chunk: int) -> Array:
 		return _interest_chunk(jobs, chunk, chunks, identities, context, cap)
-	DotParallel.run(interest_task, chunks, &"net.snapshot", workers)
+	GSParallel.run(interest_task, chunks, &"net.snapshot", workers)
 	for job in jobs:
-		for identity: DotNetIdentity in job.ordered:
+		for identity: GSNetIdentity in job.ordered:
 			for behaviour in identity.behaviours:
 				var _view := behaviour.view_for(job.peer_id)
 
@@ -422,7 +422,7 @@ func _send_snapshots_pooled(
 
 	var started := Time.get_ticks_usec()
 	_snapshot_prep_usec_total += started - prep_started
-	var results := DotParallel.run(task, chunks, &"net.snapshot", workers)
+	var results := GSParallel.run(task, chunks, &"net.snapshot", workers)
 	_snapshot_join_usec = Time.get_ticks_usec() - started
 	_snapshot_join_usec_total += _snapshot_join_usec
 	_snapshot_pooled += 1
@@ -443,7 +443,7 @@ func _send_snapshots_pooled(
 ## (chunk + 1) * n / chunks)[/code] of [param jobs], stored on each job. Runs on a worker:
 ## reads the frozen world and writes only the job and its peer's budget record.
 func _interest_chunk(
-	jobs: Array[SnapshotJob], chunk: int, chunks: int, identities: Array[DotNetIdentity],
+	jobs: Array[SnapshotJob], chunk: int, chunks: int, identities: Array[GSNetIdentity],
 	context: Dictionary, cap: int
 ) -> Array:
 	var from := chunk * jobs.size() / chunks
@@ -472,14 +472,14 @@ func _interest_chunk(
 	return []
 
 
-## The first [member DotNetConfig.peer_send_budget] of [param ordered] (accumulator order) into
+## The first [member GSNetConfig.peer_send_budget] of [param ordered] (accumulator order) into
 ## [param out], and every later one [param observer]'s owner owns. Those left out keep their
 ## accumulated priority and lead a later snapshot. Reads fields only, so a worker may run it.
-func _within_send_budget(out: Array, ordered: Array, observer: DotNetIdentity) -> void:
+func _within_send_budget(out: Array, ordered: Array, observer: GSNetIdentity) -> void:
 	var limit := config.peer_send_budget
 	var owner := observer.owner_peer_id if observer != null else -1
 	for i in ordered.size():
-		var identity: DotNetIdentity = ordered[i]
+		var identity: GSNetIdentity = ordered[i]
 		if i < limit or (owner > 0 and identity.owner_peer_id == owner):
 			out.append(identity)
 

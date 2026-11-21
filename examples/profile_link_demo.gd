@@ -1,6 +1,6 @@
 extends Node
 
-## Exercises [DotNetProfileLink]: a server and two clients, payloads pumped by hand.
+## Exercises [GSNetProfileLink]: a server and two clients, payloads pumped by hand.
 ## Run: [code]godot --headless --path . res://examples/profile_link_demo.tscn[/code]
 
 const SECTIONS := 6
@@ -14,7 +14,7 @@ var _queue: Array = []
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.ERROR)
+	GSLog.set_level(GSLog.Level.ERROR)
 	_run()
 
 
@@ -45,10 +45,10 @@ func _run() -> void:
 	get_tree().quit(1 if _failed > 0 else 0)
 
 
-func _mk_set() -> DotProfileSet:
-	var s := DotProfileSet.create("dot-npc", "mygame", "npc", [
-		DotProfileSet.field("health", "int", 100, {"min": 1, "max": 1000}),
-		DotProfileSet.field("speed", "float", 3.0, {"min": 0.0, "max": 50.0}),
+func _mk_set() -> GSProfileSet:
+	var s := GSProfileSet.create("dot-npc", "mygame", "npc", [
+		GSProfileSet.field("health", "int", 100, {"min": 1, "max": 1000}),
+		GSProfileSet.field("speed", "float", 3.0, {"min": 0.0, "max": 50.0}),
 	])
 	s.roots = PackedStringArray([BASE])
 	return s
@@ -71,11 +71,11 @@ func _world(clients: Array = [11, 12]) -> Dictionary:
 	_current = w
 	_open.append(w)
 	var srv := _manager(true, 1, "s%d" % Time.get_ticks_usec())
-	var rt := DotProfileRuntime.new()
+	var rt := GSProfileRuntime.new()
 	rt.add_set(_mk_set())
 	rt.save_root = BASE
 	rt.permit = func(actor: Variant, _flag: String) -> bool: return actor == "uid-admin"
-	var link := DotNetProfileLink.attach(srv, rt)
+	var link := GSNetProfileLink.attach(srv, rt)
 	link.actor_of = func(peer: int) -> Variant: return "uid-admin" if peer == 11 else "uid-%d" % peer
 	srv.send_fn = func(peer: int, payload: PackedByteArray, _d: int) -> void:
 		for c in _clients_of(w):
@@ -95,8 +95,8 @@ func _clients_of(w: Dictionary) -> Array:
 	return (w["clients"] as Dictionary).keys()
 
 
-func _manager(is_server: bool, id: int, scope: String) -> DotNetManager:
-	var m := DotNetManager.new()
+func _manager(is_server: bool, id: int, scope: String) -> GSNetManager:
+	var m := GSNetManager.new()
 	m.is_server = is_server
 	m.local_peer_id = id
 	m.auto_tick = false
@@ -109,9 +109,9 @@ func _manager(is_server: bool, id: int, scope: String) -> DotNetManager:
 
 func _join(w: Dictionary, id: int, attach: bool = true) -> Dictionary:
 	var m := _manager(false, id, "c%d_%d" % [id, Time.get_ticks_usec()])
-	var rt := DotProfileRuntime.new()
+	var rt := GSProfileRuntime.new()
 	rt.add_set(_mk_set())
-	var link: DotNetProfileLink = DotNetProfileLink.attach(m, rt) if attach else null
+	var link: GSNetProfileLink = GSNetProfileLink.attach(m, rt) if attach else null
 	var replies: Array = []
 	if link != null:
 		link.reply.connect(func(ok: bool, text: String) -> void: replies.append([ok, text]))
@@ -120,10 +120,10 @@ func _join(w: Dictionary, id: int, attach: bool = true) -> Dictionary:
 	m.start()
 	var entry := {"m": m, "rt": rt, "link": link, "replies": replies}
 	(w["clients"] as Dictionary)[id] = entry
-	var srv: DotNetManager = w["server"]
+	var srv: GSNetManager = w["server"]
 	srv.add_peer(id)
 	if link != null:
-		(w["link"] as DotNetProfileLink).peer_joined(id)
+		(w["link"] as GSNetProfileLink).peer_joined(id)
 	return entry
 
 
@@ -135,9 +135,9 @@ func _pump() -> void:
 		var to: int = item[0]
 		var w: Dictionary = _current
 		if to == 1:
-			(w["server"] as DotNetManager).receive(item[2], item[1])
+			(w["server"] as GSNetManager).receive(item[2], item[1])
 		elif (w["clients"] as Dictionary).has(to):
-			((w["clients"] as Dictionary)[to]["m"] as DotNetManager).receive(item[2], 1)
+			((w["clients"] as Dictionary)[to]["m"] as GSNetManager).receive(item[2], 1)
 
 
 var _current: Dictionary = {}
@@ -150,26 +150,26 @@ func _begin(title: String, clients: Array = [11, 12]) -> Dictionary:
 
 
 func _req(op: String, key: String = "", value: Variant = null) -> Dictionary:
-	return DotProfileRuntime.make_request(op, "npc", "zombie", key, value)
+	return GSProfileRuntime.make_request(op, "npc", "zombie", key, value)
 
 
-func _health(rt: DotProfileRuntime) -> Variant:
-	var res := (rt.get("_sets") as Dictionary)["npc"].load_profile("zombie") as DotResult
+func _health(rt: GSProfileRuntime) -> Variant:
+	var res := (rt.get("_sets") as Dictionary)["npc"].load_profile("zombie") as GSResult
 	return res.value.get_value("health")
 
 
 func _test_command_route() -> void:
 	var w := _begin("an admin's request reaches the server and is answered")
 	var admin: Dictionary = w["clients"][11]
-	var res: DotResult = admin["link"].submit(_req("set", "health", 400))
+	var res: GSResult = admin["link"].submit(_req("set", "health", 400))
 	_check(res.ok, "the request was sent")
 	_check(_health(w["rt"]) == 50, "nothing is applied before the server has read it")
 	_pump()
 	_check(_health(w["rt"]) == 400, "the server applied it")
 	_check(w["rt"].revision("npc", "zombie") == 1, "revision 1")
 	_check(admin["replies"].size() == 1 and admin["replies"][0][0] == true, "the requester was told it worked")
-	var local: DotResult = w["link"].submit(_req("set", "speed", 7))
-	_check(not local.ok and local.error.code == DotError.CODE_FORBIDDEN, "the server's own console is refused as a non-admin actor")
+	var local: GSResult = w["link"].submit(_req("set", "speed", 7))
+	_check(not local.ok and local.error.code == GSError.CODE_FORBIDDEN, "the server's own console is refused as a non-admin actor")
 	_check(w["rt"].revision("npc", "zombie") == 1, "and changed nothing")
 	w["link"].local_actor = "uid-admin"
 	_check(w["link"].submit(_req("set", "speed", 7)).ok and w["rt"].revision("npc", "zombie") == 2, "and as an admin it applies")
@@ -222,30 +222,30 @@ func _test_late_joiner() -> void:
 
 func _test_bad_requests() -> void:
 	var w := _begin("bad requests return errors and never crash", [11])
-	var link: DotNetProfileLink = w["link"]
+	var link: GSNetProfileLink = w["link"]
 	var cases := {
 		"not json": "{{{", "a list": "[1,2]", "empty": "", "a number": "5",
-		"unknown op": DotNetProfileLink.encode_body(_req("explode")),
-		"bad value": DotNetProfileLink.encode_body(_req("set", "health", "lots")),
-		"out of range": DotNetProfileLink.encode_body(_req("set", "health", 99999)),
-		"unknown key": DotNetProfileLink.encode_body(_req("set", "wings", 2)),
+		"unknown op": GSNetProfileLink.encode_body(_req("explode")),
+		"bad value": GSNetProfileLink.encode_body(_req("set", "health", "lots")),
+		"out of range": GSNetProfileLink.encode_body(_req("set", "health", 99999)),
+		"unknown key": GSNetProfileLink.encode_body(_req("set", "wings", 2)),
 		"object smuggled": '{"type":"Dictionary","args":[["op","value"],["set",{"type":"Object","class":"Node","props":{}}]]}',
 	}
 	for name in cases:
 		var res := link.handle_from_peer(11, cases[name])
-		_check(not res.ok, "%s is a DotResult error" % name)
+		_check(not res.ok, "%s is a GSResult error" % name)
 	_pump()
 	_check(w["clients"][11]["replies"].size() == cases.size(), "every one was answered")
 	_check(_health(w["rt"]) == 50, "nothing was applied")
-	var tiny := link.handle_from_peer(11, DotNetProfileLink.encode_body({}))
+	var tiny := link.handle_from_peer(11, GSNetProfileLink.encode_body({}))
 	_check(not tiny.ok, "an empty request is refused")
-	DotNetProfileLink.max_request_bytes = 16
-	var big := w["clients"][11]["link"].submit(_req("set", "health", 77)) as DotResult
+	GSNetProfileLink.max_request_bytes = 16
+	var big := w["clients"][11]["link"].submit(_req("set", "health", 77)) as GSResult
 	_check(not big.ok and big.error.message.contains("max_request_bytes"), "a request past max_request_bytes is refused, naming the setting")
-	DotNetProfileLink.max_request_bytes = DotNetProfileLink.MAX_REQUEST
-	var lat := DotNetLatency.new()
+	GSNetProfileLink.max_request_bytes = GSNetProfileLink.MAX_REQUEST
+	var lat := GSNetLatency.new()
 	lat.requested = 9.0
-	_check(lat.requested == DotNetLatency.MAX_SECONDS, "a latency past max_seconds is held to it (with a warning)")
+	_check(lat.requested == GSNetLatency.MAX_SECONDS, "a latency past max_seconds is held to it (with a warning)")
 	lat.max_seconds = 0.0
 	lat.requested = 9.0
 	_check(lat.requested == 9.0, "and max_seconds 0 is unlimited")
@@ -260,12 +260,12 @@ func _test_off_by_default() -> void:
 	_check(_health(w["rt"]) == 77, "the server still applies edits")
 	_check(_health(bare["rt"]) == 50, "a client that did not attach just does not see them")
 	_check(bare["link"] == null, "attach is the only switch")
-	var sealed := DotNetManager.new()
+	var sealed := GSNetManager.new()
 	sealed.config_file = ""
 	add_child(sealed)
 	sealed.setup()
 	sealed.messages.seal()
-	_check(DotNetProfileLink.attach(sealed, DotProfileRuntime.new()) == null, "attaching after the schema sealed returns null")
+	_check(GSNetProfileLink.attach(sealed, GSProfileRuntime.new()) == null, "attaching after the schema sealed returns null")
 
 
 func _section(title: String) -> void:

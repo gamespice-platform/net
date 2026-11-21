@@ -1,5 +1,5 @@
 @tool
-class_name DotNetMessage
+class_name GSNetMessage
 extends RefCounted
 
 ## Base class for anything sent over the wire. Subclass it, declare a type name, and implement [method
@@ -44,40 +44,40 @@ func _type_name() -> StringName:
 	return &""
 
 
-func _write(_writer: DotNetWriter) -> void:
+func _write(_writer: GSNetWriter) -> void:
 	push_error("%s does not implement _write()." % _type_name())
 
 
-func _read(_reader: DotNetReader) -> void:
+func _read(_reader: GSNetReader) -> void:
 	push_error("%s does not implement _read()." % _type_name())
 
 
 ## Cheap validation after decoding, before the handler sees it. The place to reject a message whose
 ## fields are individually well-formed but collectively impossible — a negative count, a slot index
 ## past the maximum, a string that must be one of four values.
-func _validate() -> DotResult:
-	return DotResult.success(true)
+func _validate() -> GSResult:
+	return GSResult.success(true)
 
 
 func type_name() -> StringName:
 	return _type_name()
 
 
-func write(writer: DotNetWriter) -> void:
+func write(writer: GSNetWriter) -> void:
 	_write(writer)
 
 
-func read(reader: DotNetReader) -> void:
+func read(reader: GSNetReader) -> void:
 	_read(reader)
 
 
-func validate() -> DotResult:
+func validate() -> GSResult:
 	return _validate()
 
 
 ## Encodes to bytes on its own, without a batch. For tests and one-off sends.
 func to_bytes() -> PackedByteArray:
-	var writer := DotNetWriter.new()
+	var writer := GSNetWriter.new()
 	_write(writer)
 	return writer.to_bytes()
 

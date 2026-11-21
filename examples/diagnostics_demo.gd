@@ -1,6 +1,6 @@
 extends Node
 
-## Exercises [DotNetStats] and [DotNetSnapshot] directly — the two classes in this addon that no
+## Exercises [GSNetStats] and [GSNetSnapshot] directly — the two classes in this addon that no
 ## example named. Both are driven indirectly by [code]netcode_demo[/code], which asserts that a couple
 ## of counters moved.
 
@@ -16,7 +16,7 @@ const CHECKS := 71
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.INFO)
+	GSLog.set_level(GSLog.Level.INFO)
 	await _run()
 
 
@@ -52,7 +52,7 @@ func _section_counters() -> void:
 	_sections_started += 1
 	_line("[b]1. counters[/b]")
 
-	var s := DotNetStats.new()
+	var s := GSNetStats.new()
 
 	s.note_sent(100, 3)
 	s.note_sent(200, 1)
@@ -69,7 +69,7 @@ func _section_counters() -> void:
 	_check("average_packet_bytes", is_equal_approx(s.average_packet_bytes(), 150.0),
 		"%.1f" % s.average_packet_bytes())
 
-	var empty := DotNetStats.new()
+	var empty := GSNetStats.new()
 	_check("average over no packets is 0, not a division by zero",
 		empty.average_packet_bytes() == 0.0)
 	_check("loss over no snapshots is 0", empty.loss_rate() == 0.0)
@@ -104,7 +104,7 @@ func _section_loss() -> void:
 	_sections_started += 1
 	_line("[b]2. inferred loss and reordering[/b]")
 
-	var s := DotNetStats.new()
+	var s := GSNetStats.new()
 	for tick in [10, 11, 12, 13]:
 		s.note_snapshot(tick)
 	_check("a clean run loses nothing", s.snapshots_lost == 0, "%d" % s.snapshots_lost)
@@ -113,7 +113,7 @@ func _section_loss() -> void:
 
 	# A gap is the only evidence available: an unreliable channel gives no
 	# delivery report.
-	var gap := DotNetStats.new()
+	var gap := GSNetStats.new()
 	gap.note_snapshot(1)
 	gap.note_snapshot(5)
 	_check("a gap of 4 counts 3 lost", gap.snapshots_lost == 3, "%d" % gap.snapshots_lost)
@@ -121,7 +121,7 @@ func _section_loss() -> void:
 		is_equal_approx(gap.loss_rate(), 3.0 / 5.0), "%.3f" % gap.loss_rate())
 
 	# The denominator has to be snapshots, not packets.
-	var diluted := DotNetStats.new()
+	var diluted := GSNetStats.new()
 	diluted.note_snapshot(1)
 	diluted.note_snapshot(5)
 	for _i in range(50):
@@ -131,7 +131,7 @@ func _section_loss() -> void:
 
 	# Reordering is not loss. The late packet was counted as lost when the gap
 	# it left was measured, and it then arrived.
-	var reorder := DotNetStats.new()
+	var reorder := GSNetStats.new()
 	reorder.note_snapshot(1)
 	reorder.note_snapshot(3)
 	_check("tick 2 provisionally counted lost", reorder.snapshots_lost == 1)
@@ -144,7 +144,7 @@ func _section_loss() -> void:
 
 	# A duplicate of the newest tick is not a recovered loss, and must not
 	# credit one that never happened.
-	var dup := DotNetStats.new()
+	var dup := GSNetStats.new()
 	dup.note_snapshot(1)
 	dup.note_snapshot(4)
 	dup.note_snapshot(4)
@@ -162,7 +162,7 @@ func _loss_period_and_bounds() -> void:
 	# A snapshot every second tick is the normal case at 64 ticks and 32 snapshots, and
 	# a gap of one period is not a loss. Counting ticks reported half of every clean link
 	# lost (0.52 measured against 0.05 injected, through a real relay on ENet).
-	var period := DotNetStats.new()
+	var period := GSNetStats.new()
 	period.snapshot_interval_ticks = 2
 	for tick in [2, 4, 6, 8, 10]:
 		period.note_snapshot(tick)
@@ -177,7 +177,7 @@ func _loss_period_and_bounds() -> void:
 		"%d lost, %d out of order" % [period.snapshots_lost, period.out_of_order])
 
 	# Loss cannot go negative, however badly a peer misbehaves.
-	var evil := DotNetStats.new()
+	var evil := GSNetStats.new()
 	evil.note_snapshot(100)
 	for tick in [50, 51, 52, 53]:
 		evil.note_snapshot(tick)
@@ -190,7 +190,7 @@ func _section_rates() -> void:
 	_sections_started += 1
 	_line("[b]3. rolling rates on a connection that stops[/b]")
 
-	var s := DotNetStats.new()
+	var s := GSNetStats.new()
 	_check("rates start at zero", s.bytes_sent_per_sec == 0.0)
 
 	for _i in range(20):
@@ -228,7 +228,7 @@ func _section_rtt() -> void:
 	_sections_started += 1
 	_line("[b]4. rtt percentiles[/b]")
 
-	var s := DotNetStats.new()
+	var s := GSNetStats.new()
 	for i in range(1, 101):
 		s.note_rtt(float(i))
 
@@ -254,10 +254,10 @@ func _section_rtt() -> void:
 
 	# The sample buffer is bounded, and must keep the newest rather than the
 	# first 128 the connection ever saw.
-	var many := DotNetStats.new()
-	for _i in range(DotNetStats.SAMPLE_CAPACITY * 2):
+	var many := GSNetStats.new()
+	for _i in range(GSNetStats.SAMPLE_CAPACITY * 2):
 		many.note_rtt(10.0)
-	for _i in range(DotNetStats.SAMPLE_CAPACITY):
+	for _i in range(GSNetStats.SAMPLE_CAPACITY):
 		many.note_rtt(500.0)
 	_check("the sample window keeps the newest",
 		many.rtt_percentile(0.5) == 500.0, "%.0f" % many.rtt_percentile(0.5))
@@ -270,7 +270,7 @@ func _section_snapshot_basics() -> void:
 	_sections_started += 1
 	_line("[b]5. snapshot basics[/b]")
 
-	var snap := DotNetSnapshot.new(42)
+	var snap := GSNetSnapshot.new(42)
 	_check("tick", snap.tick == 42)
 	_check("a snapshot with no baseline is a full state", snap.is_full_state())
 	_check("empty", snap.entity_count() == 0)
@@ -303,11 +303,11 @@ func _section_snapshot_delta() -> void:
 	_sections_started += 1
 	_line("[b]6. delta and apply[/b]")
 
-	var base := DotNetSnapshot.new(10)
+	var base := GSNetSnapshot.new(10)
 	base.set_values(1, {"x": 0.0, "y": 0.0, "hp": 100})
 	base.set_values(2, {"x": 9.0})
 
-	var newer := DotNetSnapshot.new(11)
+	var newer := GSNetSnapshot.new(11)
 	newer.set_values(1, {"x": 5.0, "y": 0.0, "hp": 100})
 	newer.set_values(2, {"x": 9.0})
 	newer.set_values(3, {"x": 1.0})
@@ -347,7 +347,7 @@ func _section_snapshot_isolation() -> void:
 	_sections_started += 1
 	_line("[b]7. baselines outlive what built them[/b]")
 
-	var base := DotNetSnapshot.new(1)
+	var base := GSNetSnapshot.new(1)
 	base.set_values(1, {"x": 0.0})
 
 	# The server keeps sent snapshots as delta baselines. A shallow copy lets a later tick mutate a
@@ -382,7 +382,7 @@ func _wait(seconds: float) -> void:
 
 
 func _finish(code: int = 0) -> void:
-	if DotPlatform.is_headless():
+	if GSPlatform.is_headless():
 		await get_tree().process_frame
 		get_tree().quit(code)
 

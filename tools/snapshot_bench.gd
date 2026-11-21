@@ -2,9 +2,9 @@ extends Node
 
 ## Snapshot cost on a scripted server: N peers each owning a predicted player, plus NPCs, moving every tick. Run: [code]res://tools/snapshot_bench.tscn
 ## -- --peers=100 --npcs=213[/code]; [code]--hash[/code] prints a digest of every payload, [code]BENCH {json}[/code] the result;
-## [code]--no-sim-codec[/code] keeps [DotNetSimCodec] off for a with/without comparison.
+## [code]--no-sim-codec[/code] keeps [GSNetSimCodec] off for a with/without comparison.
 
-class Player extends DotNetBehaviour:
+class Player extends GSNetBehaviour:
 	var position := Vector3.ZERO
 	var velocity := Vector3.ZERO
 	var yaw := 0.0
@@ -18,20 +18,20 @@ class Player extends DotNetBehaviour:
 	var grounded := true
 
 	func _register_net_vars() -> void:
-		replicate(&"position", DotNetVar.Type.VECTOR3_POSITION).interpolated()
-		replicate(&"velocity", DotNetVar.Type.VECTOR3_VELOCITY)
-		replicate(&"yaw", DotNetVar.Type.ANGLE).bits(12)
-		replicate(&"pitch", DotNetVar.Type.ANGLE).bits(10)
-		replicate(&"health", DotNetVar.Type.FLOAT_RANGE).range_of(0.0, 2000.0).bits(14)
-		replicate(&"stance", DotNetVar.Type.UINT).bits(3)
-		replicate(&"weapon", DotNetVar.Type.UINT).bits(5)
-		replicate(&"ammo", DotNetVar.Type.UINT).bits(9).to_owner_only()
-		replicate(&"points", DotNetVar.Type.UINT).bits(16)
-		replicate(&"flags", DotNetVar.Type.UINT).bits(8)
-		replicate(&"grounded", DotNetVar.Type.BOOL)
+		replicate(&"position", GSNetVar.Type.VECTOR3_POSITION).interpolated()
+		replicate(&"velocity", GSNetVar.Type.VECTOR3_VELOCITY)
+		replicate(&"yaw", GSNetVar.Type.ANGLE).bits(12)
+		replicate(&"pitch", GSNetVar.Type.ANGLE).bits(10)
+		replicate(&"health", GSNetVar.Type.FLOAT_RANGE).range_of(0.0, 2000.0).bits(14)
+		replicate(&"stance", GSNetVar.Type.UINT).bits(3)
+		replicate(&"weapon", GSNetVar.Type.UINT).bits(5)
+		replicate(&"ammo", GSNetVar.Type.UINT).bits(9).to_owner_only()
+		replicate(&"points", GSNetVar.Type.UINT).bits(16)
+		replicate(&"flags", GSNetVar.Type.UINT).bits(8)
+		replicate(&"grounded", GSNetVar.Type.BOOL)
 
 
-class Npc extends DotNetBehaviour:
+class Npc extends GSNetBehaviour:
 	var net_x := 0.0
 	var net_y := 0.0
 	var net_z := 0.0
@@ -43,15 +43,15 @@ class Npc extends DotNetBehaviour:
 	var net_flags := 0
 
 	func _register_net_vars() -> void:
-		replicate(&"net_x", DotNetVar.Type.FLOAT_RANGE).range_of(-2048.0, 2048.0).bits(20).interpolated()
-		replicate(&"net_y", DotNetVar.Type.FLOAT_RANGE).range_of(-512.0, 512.0).bits(16).interpolated()
-		replicate(&"net_z", DotNetVar.Type.FLOAT_RANGE).range_of(-2048.0, 2048.0).bits(20).interpolated()
-		replicate(&"net_yaw", DotNetVar.Type.UINT).bits(8)
-		replicate(&"net_health", DotNetVar.Type.UINT).bits(10)
-		replicate(&"net_state", DotNetVar.Type.UINT).bits(3)
-		replicate(&"net_limbs", DotNetVar.Type.UINT).bits(6)
-		replicate(&"net_anim", DotNetVar.Type.UINT).bits(5)
-		replicate(&"net_flags", DotNetVar.Type.UINT).bits(5)
+		replicate(&"net_x", GSNetVar.Type.FLOAT_RANGE).range_of(-2048.0, 2048.0).bits(20).interpolated()
+		replicate(&"net_y", GSNetVar.Type.FLOAT_RANGE).range_of(-512.0, 512.0).bits(16).interpolated()
+		replicate(&"net_z", GSNetVar.Type.FLOAT_RANGE).range_of(-2048.0, 2048.0).bits(20).interpolated()
+		replicate(&"net_yaw", GSNetVar.Type.UINT).bits(8)
+		replicate(&"net_health", GSNetVar.Type.UINT).bits(10)
+		replicate(&"net_state", GSNetVar.Type.UINT).bits(3)
+		replicate(&"net_limbs", GSNetVar.Type.UINT).bits(6)
+		replicate(&"net_anim", GSNetVar.Type.UINT).bits(5)
+		replicate(&"net_flags", GSNetVar.Type.UINT).bits(5)
 
 
 const ACK_LAG := 2
@@ -80,7 +80,7 @@ var _client_payloads: Array[PackedByteArray] = []
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.ERROR)
+	GSLog.set_level(GSLog.Level.ERROR)
 	for arg in OS.get_cmdline_user_args():
 		var value := arg.get_slice("=", 1)
 		match arg.get_slice("=", 0):
@@ -102,21 +102,21 @@ func _ready() -> void:
 			"--split": _split = true
 			"--native": _native = true
 			"--native-interest": _native = true; _native_interest = true
-			"--no-sim-codec": DotNetSimCodec.enabled = false
+			"--no-sim-codec": GSNetSimCodec.enabled = false
 			"--client": _client = true
 	_run.call_deferred()
 
 
 ## The server under test, set up from the command-line knobs.
-func _make_host() -> DotNetManager:
-	var host := DotNetManager.new()
+func _make_host() -> GSNetManager:
+	var host := GSNetManager.new()
 	host.name = "Bench"
 	host.is_server = true
 	host.local_peer_id = 1
 	host.service_scope = &"snapshot_bench"
 	host.auto_tick = false
 	host.config_file = ""
-	var config := DotNetConfig.new()
+	var config := GSNetConfig.new()
 	config.tick_rate = 64
 	config.snapshot_rate = 64
 	config.per_client_budget = 0
@@ -129,11 +129,11 @@ func _make_host() -> DotNetManager:
 	add_child(host)
 	var _s := host.setup()
 	if _relevance:
-		var distance := DotNetInterestDistance.new()
+		var distance := GSNetInterestDistance.new()
 		distance.radius = _radius
 		host.interest = distance
 	else:
-		host.interest = DotNetInterestAll.new()
+		host.interest = GSNetInterestAll.new()
 	host.interest.evaluation_interval_sec = 0.0
 	host.interest.far_every = _far_every
 	host.interest.far_distance = _far
@@ -150,7 +150,7 @@ func _run() -> void:
 	var sent := [0, 0]
 	var acks_due: Array = []
 	host.send_fn = func(peer_id: int, payload: PackedByteArray, delivery: int) -> void:
-		if delivery != DotNetMessage.Delivery.UNRELIABLE:
+		if delivery != GSNetMessage.Delivery.UNRELIABLE:
 			return
 		sent[0] += 1
 		sent[1] += payload.size()
@@ -170,10 +170,10 @@ func _run() -> void:
 		var peer := i + 2
 		host.add_peer(peer)
 		var _r := host.receive(schema, peer)
-		var made: DotNetIdentity = host.spawner.spawn(&"player", peer, Transform3D.IDENTITY, 0).value
+		var made: GSNetIdentity = host.spawner.spawn(&"player", peer, Transform3D.IDENTITY, 0).value
 		players.append(made.behaviours[0] as Player)
 	for i in _npcs:
-		var made: DotNetIdentity = host.spawner.spawn(&"npc", 0, Transform3D.IDENTITY, 0).value
+		var made: GSNetIdentity = host.spawner.spawn(&"npc", 0, Transform3D.IDENTITY, 0).value
 		npcs.append(made.behaviours[0] as Npc)
 
 	var times: Array[float] = []
@@ -198,7 +198,7 @@ func _run() -> void:
 		total += t
 	var row := {
 		"peers": _peers, "npcs": _npcs, "relevance": _relevance, "workers": _workers, "native": host._native_note if _native else "off",
-		"sim_codec": DotNetSimCodec.available(),
+		"sim_codec": GSNetSimCodec.available(),
 		"far_every": _far_every, "far_tiers": _far_tiers, "send_budget": _send_budget, "mean_ms": snappedf(total / times.size(), 0.01),
 		"p50_ms": snappedf(times[times.size() / 2], 0.01),
 		"min_ms": snappedf(times[0], 0.01),
@@ -224,15 +224,15 @@ func _run() -> void:
 
 ## [code]--client[/code]: peer 2's snapshots replayed into a client holding every entity, its own
 ## player predicted; [code]client_*[/code] is the receive cost per snapshot after the warm-up.
-func _client_receive(host: DotNetManager, row: Dictionary) -> void:
-	var guest := DotNetManager.new()
+func _client_receive(host: GSNetManager, row: Dictionary) -> void:
+	var guest := GSNetManager.new()
 	guest.name = "BenchClient"
 	guest.is_server = false
 	guest.local_peer_id = 2
 	guest.service_scope = &"snapshot_bench_client"
 	guest.auto_tick = false
 	guest.config_file = ""
-	guest.config = DotNetConfig.new()
+	guest.config = GSNetConfig.new()
 	guest.config.tick_rate = 64
 	guest.config.snapshot_rate = 64
 	guest.config.reconcile_once_per_frame = true
@@ -267,7 +267,7 @@ func _client_receive(host: DotNetManager, row: Dictionary) -> void:
 
 
 ## The manager's inline snapshot path, the same calls, lapped by part (ms per tick in the row).
-func _split_tick(n: DotNetManager, tick: int, measure: bool) -> void:
+func _split_tick(n: GSNetManager, tick: int, measure: bool) -> void:
 	n.clock.tick = maxi(n.clock.tick, tick)
 	var identities := n.registry.all()
 	var context := {"tick": tick, "config": n.config, "now_ms": Time.get_ticks_msec()}
@@ -288,7 +288,7 @@ func _split_tick(n: DotNetManager, tick: int, measure: bool) -> void:
 		var relevant := n.interest.relevant_for(observer, identities, peer_id, context)
 		at = _lap(laps, "relevant", at)
 		if n.interest.thins():
-			var kept: Array[DotNetIdentity] = []
+			var kept: Array[GSNetIdentity] = []
 			n.interest.thin_into(kept, observer, relevant, peer_id, context)
 			relevant = kept
 		var scores := n.interest.scores_for(observer, relevant, context)
@@ -296,7 +296,7 @@ func _split_tick(n: DotNetManager, tick: int, measure: bool) -> void:
 		relevant = n.interest.prioritise(observer, relevant, n.config.entity_cap(), context, peer_id, scores)
 		relevant = n.budget.accumulate(peer_id, relevant, scores)
 		if n.config.peer_send_budget > 0 and relevant.size() > n.config.peer_send_budget:
-			var kept: Array[DotNetIdentity] = []
+			var kept: Array[GSNetIdentity] = []
 			n._within_send_budget(kept, relevant, observer)
 			relevant = kept
 		at = _lap(laps, "rank_budget", at)
@@ -318,12 +318,12 @@ func _lap(laps: Dictionary, key: String, since: int) -> int:
 	return now
 
 
-func _body(behaviour: DotNetBehaviour) -> Node:
+func _body(behaviour: GSNetBehaviour) -> Node:
 	var body := Node3D.new()
-	var identity := DotNetIdentity.new()
+	var identity := GSNetIdentity.new()
 	identity.name = "NetIdentity"
 	identity.prefab_id = &"player" if behaviour is Player else &"npc"
-	identity.authority = DotNetIdentity.Authority.SHARED if behaviour is Player else DotNetIdentity.Authority.SERVER
+	identity.authority = GSNetIdentity.Authority.SHARED if behaviour is Player else GSNetIdentity.Authority.SERVER
 	identity.always_relevant = _players_always and behaviour is Player
 	if _hash:
 		# Linger is timed by the wall clock, so a faster build would keep entities longer.

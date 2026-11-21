@@ -1,7 +1,7 @@
 extends Node
 
-## DotNetInterestDistance over a frozen world with and without the packed per-snapshot copies
-## ([member DotNetInterest.use_packed]): the same relevant set in the same order over seeded worlds (owners,
+## GSNetInterestDistance over a frozen world with and without the packed per-snapshot copies
+## ([member GSNetInterest.use_packed]): the same relevant set in the same order over seeded worlds (owners,
 ## always-relevant, tagged entities), then the cost of index_snapshot plus one relevance per observer.
 ## Exit 1 on any difference or when the packed path is not the one measured; the timings are printed, not asserted
 ## (budgets belong to the perf system). Run: [code]godot --headless --path . res://tools/interest_packed_bench.tscn[/code]
@@ -11,7 +11,7 @@ const OBSERVERS := 32
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.ERROR)
+	GSLog.set_level(GSLog.Level.ERROR)
 	var bad := 0
 	for seed_i in 4:
 		bad += _compare(seed_i)
@@ -20,12 +20,12 @@ func _ready() -> void:
 	get_tree().quit(1 if bad > 0 else 0)
 
 
-func _world(seed_i: int, n: int) -> Array[DotNetIdentity]:
+func _world(seed_i: int, n: int) -> Array[GSNetIdentity]:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2000 + seed_i
-	var all: Array[DotNetIdentity] = []
+	var all: Array[GSNetIdentity] = []
 	for i in n:
-		var id := DotNetIdentity.new()
+		var id := GSNetIdentity.new()
 		id.net_id = i + 1
 		id.owner_peer_id = i % 40
 		id._frozen_position = Vector3(rng.randf_range(-900, 900), rng.randf_range(-40, 80), rng.randf_range(-900, 900))
@@ -37,8 +37,8 @@ func _world(seed_i: int, n: int) -> Array[DotNetIdentity]:
 	return all
 
 
-func _strategy() -> DotNetInterestDistance:
-	var d := DotNetInterestDistance.new()
+func _strategy() -> GSNetInterestDistance:
+	var d := GSNetInterestDistance.new()
 	d.radius = 150.0
 	d.radius_by_tag = {"prop": 60.0}
 	d.evaluation_interval_sec = 0.0
@@ -47,7 +47,7 @@ func _strategy() -> DotNetInterestDistance:
 
 func _ids(arr: Array) -> PackedInt32Array:
 	var out := PackedInt32Array()
-	for id: DotNetIdentity in arr:
+	for id: GSNetIdentity in arr:
 		out.append(id.net_id)
 	return out
 
@@ -57,7 +57,7 @@ func _compare(seed_i: int) -> int:
 	var bad := 0
 	var sets: Array = []
 	for packed in [false, true]:
-		DotNetInterest.use_packed = packed
+		GSNetInterest.use_packed = packed
 		var d := _strategy()
 		d.index_snapshot(all)
 		if d._packed_ok != packed:
@@ -69,7 +69,7 @@ func _compare(seed_i: int) -> int:
 			d._evaluate_into(out, all[o * 13], all, {})
 			per.append(_ids(out))
 		sets.append(per)
-	DotNetInterest.use_packed = true
+	GSNetInterest.use_packed = true
 	for o in OBSERVERS:
 		if sets[0][o] != sets[1][o]:
 			bad += 1
@@ -82,7 +82,7 @@ func _compare(seed_i: int) -> int:
 func _bench() -> void:
 	var all := _world(9, ENTITIES)
 	for packed in [false, true]:
-		DotNetInterest.use_packed = packed
+		GSNetInterest.use_packed = packed
 		var d := _strategy()
 		var best := INF
 		for rep in 9:
@@ -93,4 +93,4 @@ func _bench() -> void:
 				d._evaluate_into(out, all[o * 13], all, {})
 			best = minf(best, float(Time.get_ticks_usec() - t0))
 		print("BENCH %s: %d entities, %d observers, index+queries %.0f us" % ["packed" if packed else "objects", ENTITIES, OBSERVERS, best])
-	DotNetInterest.use_packed = true
+	GSNetInterest.use_packed = true

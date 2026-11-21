@@ -10,7 +10,7 @@ static void initialize_dot_net_native(ModuleInitializationLevel p_level) {
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
 		return;
 	}
-	GDREGISTER_CLASS(DotNetNativeCore);
+	GDREGISTER_CLASS(GSNetNativeCore);
 }
 
 static void uninitialize_dot_net_native(ModuleInitializationLevel p_level) {

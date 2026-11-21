@@ -1,4 +1,4 @@
-class_name DotNetBudget
+class_name GSNetBudget
 extends RefCounted
 
 ## Per-client bandwidth budget with a priority accumulator. [b]The problem.[/b] Interest management
@@ -30,12 +30,12 @@ class PeerBudget extends RefCounted:
 	var total_starved: int = 0
 
 	## Whether the tick that just ended starved anything, so the log can report the
-	## edges rather than the condition. See [method DotNetBudget.begin_tick].
+	## edges rather than the condition. See [method GSNetBudget.begin_tick].
 	var was_starving: bool = false
 
-	## The DotNetNativeCore holding newer [member accumulators] and [member starved_ticks] than these
+	## The GSNetNativeCore holding newer [member accumulators] and [member starved_ticks] than these
 	## two dictionaries (its native-interest builds keep them between snapshots), or null.
-	## [method DotNetBudget.for_peer] writes them back first.
+	## [method GSNetBudget.for_peer] writes them back first.
 	var _native: Object = null
 
 	func _init(p_peer_id: int) -> void:
@@ -43,13 +43,13 @@ class PeerBudget extends RefCounted:
 		window_started_ms = Time.get_ticks_msec()
 
 
-var config: DotNetConfig
+var config: GSNetConfig
 
 ## peer_id -> PeerBudget
 var _peers: Dictionary = {}
 
 
-func _init(p_config: DotNetConfig) -> void:
+func _init(p_config: GSNetConfig) -> void:
 	config = p_config
 
 
@@ -81,9 +81,9 @@ func forget_peer(peer_id: int) -> void:
 ## this tick's relevance, from the interest strategy.
 func accumulate(
 	peer_id: int,
-	candidates: Array[DotNetIdentity],
+	candidates: Array[GSNetIdentity],
 	scores: Dictionary
-) -> Array[DotNetIdentity]:
+) -> Array[GSNetIdentity]:
 	var budget := for_peer(peer_id)
 
 	for identity in candidates:
@@ -101,7 +101,7 @@ func accumulate(
 
 ## [method accumulate] for a worker thread: the same writes, into [param budget] (the peer's
 ## record from [method for_peer], made on the manager's thread, and written by no other
-## thread), and the order as an untyped list (see [method DotNetInterest.relevance]).
+## thread), and the order as an untyped list (see [method GSNetInterest.relevance]).
 func accumulate_record(
 	budget: PeerBudget,
 	candidates: Array,
@@ -115,7 +115,7 @@ func accumulate_record(
 	var threshold := starvation_ticks
 	var weight := starvation_weight
 	var i := 0
-	for identity: DotNetIdentity in candidates:
+	for identity: GSNetIdentity in candidates:
 		var id := identity.net_id
 		var waited: int = int(waits.get(id, 0)) + 1
 		waits[id] = waited
@@ -134,15 +134,15 @@ func accumulate_record(
 
 ## [param candidates], highest accumulator first.
 static func _by_accumulator(
-	candidates: Array[DotNetIdentity], accumulators: Dictionary
-) -> Array[DotNetIdentity]:
-	var ordered: Array[DotNetIdentity] = []
+	candidates: Array[GSNetIdentity], accumulators: Dictionary
+) -> Array[GSNetIdentity]:
+	var ordered: Array[GSNetIdentity] = []
 	_order_into(candidates, accumulators, ordered)
 	return ordered
 
 
 ## [method _by_accumulator] into [param ordered], typed or not: untyped from
-## [method accumulate_record] on a worker thread (see [method DotNetInterest.relevance]).
+## [method accumulate_record] on a worker thread (see [method GSNetInterest.relevance]).
 static func _order_into(
 	candidates: Array, accumulators: Dictionary, ordered: Array
 ) -> void:
@@ -279,14 +279,14 @@ func begin_tick(peer_id: int) -> void:
 
 	if starving != budget.was_starving:
 		if starving:
-			DotLog.debug(CHANNEL, "a peer's budget ran out", {
+			GSLog.debug(CHANNEL, "a peer's budget ran out", {
 				"peer": peer_id,
 				"starved": budget.starved_this_tick,
 				"bytes_this_second": budget.bytes_this_second,
 				"budget": config.per_client_budget,
 			})
 		else:
-			DotLog.debug(CHANNEL, "a peer's budget is keeping up again", {
+			GSLog.debug(CHANNEL, "a peer's budget is keeping up again", {
 				"peer": peer_id, "total_starved": budget.total_starved
 			})
 
@@ -333,7 +333,7 @@ func describe_lines() -> PackedStringArray:
 		var d := describe_peer(peer_id)
 		out.append("%-8d %-12s %-10d %-8s %d" % [
 			peer_id,
-			DotPaths.format_bytes(int(d["bytes_per_sec"])),
+			GSPaths.format_bytes(int(d["bytes_per_sec"])),
 			int(d["packets_per_sec"]),
 			str(d["utilisation"]),
 			int(d["starved"]),

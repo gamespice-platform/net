@@ -4,12 +4,12 @@ extends "netcode_tests.gd"
 
 
 
-func _messages_round_trip(registry: DotNetMessageRegistry) -> void:
+func _messages_round_trip(registry: GSNetMessageRegistry) -> void:
 	# Round trip.
 	var message := ChatMessage.new()
 	message.text = "hello from the client"
 
-	var w := DotNetWriter.new()
+	var w := GSNetWriter.new()
 	_check("encode", registry.encode(message, w).ok)
 
 	var decoded := registry.decode(w.to_reader(), 5, true)
@@ -20,19 +20,19 @@ func _messages_round_trip(registry: DotNetMessageRegistry) -> void:
 	)
 	_check(
 		"sender is the transport's view",
-		decoded.ok and (decoded.value as DotNetMessage).sender_peer_id == 5
+		decoded.ok and (decoded.value as GSNetMessage).sender_peer_id == 5
 	)
 
 	# A client must not be able to send a server-to-client message.
 	var notice := ServerNotice.new()
 	notice.notice = "you have been kicked"
-	var nw := DotNetWriter.new()
+	var nw := GSNetWriter.new()
 	registry.encode(notice, nw)
 
 	var violation := registry.decode(nw.to_reader(), 7, true)
 	_check(
 		"direction violation refused",
-		not violation.ok and violation.code() == DotError.CODE_FORBIDDEN
+		not violation.ok and violation.code() == GSError.CODE_FORBIDDEN
 	)
 
 	# The same message is fine going the other way.
@@ -42,7 +42,7 @@ func _messages_round_trip(registry: DotNetMessageRegistry) -> void:
 	# Validation runs before the handler sees it.
 	var empty := ChatMessage.new()
 	empty.text = "   "
-	var ew := DotNetWriter.new()
+	var ew := GSNetWriter.new()
 	registry.encode(empty, ew)
 	_check(
 		"validation rejects",
@@ -51,8 +51,8 @@ func _messages_round_trip(registry: DotNetMessageRegistry) -> void:
 
 	# An unknown id is a type this end does not have -- what a peer one build ahead
 	# sends. It is skipped, by its framed length, and is not an error.
-	var bogus := DotNetWriter.new()
-	bogus.write_uint(4000, DotNetMessageRegistry.ID_BITS)
+	var bogus := GSNetWriter.new()
+	bogus.write_uint(4000, GSNetMessageRegistry.ID_BITS)
 	bogus.write_varint(0)
 	var before := registry.skipped
 	var unknown := registry.decode(bogus.to_reader(), 3, true)
@@ -63,17 +63,17 @@ func _messages_round_trip(registry: DotNetMessageRegistry) -> void:
 
 	# A body claiming more bits than the payload holds is truncated, and that still is an
 	# error: the length is what makes skipping possible, so it has to be believable.
-	var short := DotNetWriter.new()
-	short.write_uint(registry.id_of(&"demo.chat"), DotNetMessageRegistry.ID_BITS)
+	var short := GSNetWriter.new()
+	short.write_uint(registry.id_of(&"demo.chat"), GSNetMessageRegistry.ID_BITS)
 	short.write_varint(4000)
 	_check(
 		"a body longer than the payload is a parse failure",
-		registry.decode(short.to_reader(), 3, true).code() == DotError.CODE_PARSE
+		registry.decode(short.to_reader(), 3, true).code() == GSError.CODE_PARSE
 	)
 
 	# Dispatch.
 	var received: Array[String] = []
-	registry.on(&"demo.chat", func(m: DotNetMessage) -> void:
+	registry.on(&"demo.chat", func(m: GSNetMessage) -> void:
 		received.append((m as ChatMessage).text))
 	registry.dispatch(decoded.value)
 	_check("dispatched to the handler", received.size() == 1)
@@ -83,7 +83,7 @@ func _test_messages() -> void:
 	print("")
 	print("[messages]")
 
-	var registry := DotNetMessageRegistry.new()
+	var registry := GSNetMessageRegistry.new()
 
 	_check(
 		"register",
@@ -93,8 +93,8 @@ func _test_messages() -> void:
 		"register second",
 		registry.register(
 			&"demo.notice", ServerNotice,
-			DotNetMessage.Delivery.RELIABLE,
-			DotNetMessage.Direction.TO_CLIENT
+			GSNetMessage.Delivery.RELIABLE,
+			GSNetMessage.Direction.TO_CLIENT
 		).ok
 	)
 	_check(
@@ -110,9 +110,9 @@ func _test_messages() -> void:
 	)
 
 	# Ids come from sorted names, so two peers agree without negotiating.
-	var other := DotNetMessageRegistry.new()
-	other.register(&"demo.notice", ServerNotice, DotNetMessage.Delivery.RELIABLE,
-		DotNetMessage.Direction.TO_CLIENT)
+	var other := GSNetMessageRegistry.new()
+	other.register(&"demo.notice", ServerNotice, GSNetMessage.Delivery.RELIABLE,
+		GSNetMessage.Direction.TO_CLIENT)
 	other.register(&"demo.chat", ChatMessage)
 	other.seal()
 
@@ -125,7 +125,7 @@ func _test_messages() -> void:
 		registry.schema_hash() == other.schema_hash()
 	)
 
-	var third := DotNetMessageRegistry.new()
+	var third := GSNetMessageRegistry.new()
 	third.register(&"demo.chat", ChatMessage)
 	third.seal()
 	_check(
@@ -136,10 +136,10 @@ func _test_messages() -> void:
 	_messages_round_trip(registry)
 
 
-func _mismatched_required(old: DotNetMessageRegistry) -> void:
+func _mismatched_required(old: GSNetMessageRegistry) -> void:
 	# A REQUIRED type one end lacks. The old client meets a server that requires
 	# demo.vital, in both of the places the check runs.
-	var strict := DotNetMessageRegistry.new()
+	var strict := GSNetMessageRegistry.new()
 	strict.register(&"demo.chat", ChatMessageV2)
 	strict.register(&"demo.vital", VitalMessage)
 	strict.seal()
@@ -150,12 +150,12 @@ func _mismatched_required(old: DotNetMessageRegistry) -> void:
 	)
 
 	var refusals: Array = []
-	strict.peer_refused.connect(func(peer: int, err: DotError) -> void: refusals.append([peer, err]))
+	strict.peer_refused.connect(func(peer: int, err: GSError) -> void: refusals.append([peer, err]))
 
 	var at_server := strict.adopt_peer_schema(5, _schema_body(old.schema_payload()), true)
 	_check(
 		"the server refuses a client missing a type it requires",
-		not at_server.ok and at_server.code() == DotError.CODE_VERSION
+		not at_server.ok and at_server.code() == GSError.CODE_VERSION
 	)
 	_check(
 		"with a sentence a player can act on (%s)" % (at_server.error.message if not at_server.ok else ""),
@@ -174,7 +174,7 @@ func _mismatched_required(old: DotNetMessageRegistry) -> void:
 	)
 
 	# Nothing from a refused peer is handed to a game.
-	var cw := DotNetWriter.new()
+	var cw := GSNetWriter.new()
 	var after := ChatMessageV2.new()
 	after.text = "ignored"
 	strict.encode(after, cw)
@@ -192,12 +192,12 @@ func _mismatched_required(old: DotNetMessageRegistry) -> void:
 func _mismatched_manager() -> void:
 	# The manager: a server announces as it adds a peer, the client as it starts, and a
 	# refusal reaches the host on the manager's own signal.
-	var s := DotNetManager.new()
+	var s := GSNetManager.new()
 	s.is_server = true
 	s.auto_tick = false
 	s.config_file = ""
 	s.service_scope = &"schema_server"
-	var c := DotNetManager.new()
+	var c := GSNetManager.new()
 	c.is_server = false
 	c.local_peer_id = 3
 	c.auto_tick = false
@@ -216,7 +216,7 @@ func _mismatched_manager() -> void:
 	c.send_fn = func(peer: int, payload: PackedByteArray, _d: int) -> void: wire.append([3, peer, payload])
 
 	var manager_refusals: Array = []
-	s.peer_schema_refused.connect(func(peer: int, err: DotError) -> void: manager_refusals.append([peer, err.message]))
+	s.peer_schema_refused.connect(func(peer: int, err: GSError) -> void: manager_refusals.append([peer, err.message]))
 
 	s.start()
 	c.start()
@@ -247,12 +247,12 @@ func _mismatched_manager() -> void:
 	c.free()
 
 
-func _mismatched_newer_reader(old: DotNetMessageRegistry, new: DotNetMessageRegistry) -> void:
+func _mismatched_newer_reader(old: GSNetMessageRegistry, new: GSNetMessageRegistry) -> void:
 	# And the other way: an old chat into a new reader, whose appended field keeps its
 	# default because the older sender never wrote it.
 	var old_line := ChatMessage.new()
 	old_line.text = "from the past"
-	var ow := DotNetWriter.new()
+	var ow := GSNetWriter.new()
 	old.encode(old_line, ow)
 	var into_new := new.decode(ow.to_reader(), 5, true)
 	_check(
@@ -273,20 +273,20 @@ func _test_mismatched_schemas() -> void:
 	print("")
 	print("[mismatched schemas]")
 
-	var old := DotNetMessageRegistry.new()
+	var old := GSNetMessageRegistry.new()
 	old.register(&"demo.chat", ChatMessage)
 	old.seal()
 
-	var new := DotNetMessageRegistry.new()
+	var new := GSNetMessageRegistry.new()
 	new.register(&"demo.chat", ChatMessageV2)
-	new.register(&"demo.extra", ExtraMessage, DotNetMessage.Delivery.RELIABLE,
-		DotNetMessage.Direction.BOTH, false)
+	new.register(&"demo.extra", ExtraMessage, GSNetMessage.Delivery.RELIABLE,
+		GSNetMessage.Direction.BOTH, false)
 	new.seal()
 
 	_check(
 		"a type has the same wire id whatever else is registered",
 		old.id_of(&"demo.chat") == new.id_of(&"demo.chat")
-			and old.id_of(&"demo.chat") == DotNetMessageRegistry.wire_id_for(&"demo.chat")
+			and old.id_of(&"demo.chat") == GSNetMessageRegistry.wire_id_for(&"demo.chat")
 	)
 	_check(
 		"an extra OPTIONAL type does not change the schema hash",
@@ -308,7 +308,7 @@ func _test_mismatched_schemas() -> void:
 	)
 
 	# New sends [extra, chat, extra] in one batch. Old has no idea what an extra is.
-	var batch := DotNetPacket.Batch.new(9)
+	var batch := GSNetPacket.Batch.new(9)
 	var e1 := ExtraMessage.new()
 	e1.value = 1234
 	batch.add(e1, 4)
@@ -318,9 +318,9 @@ func _test_mismatched_schemas() -> void:
 	batch.add(line, 16)
 	batch.add(ExtraMessage.new(), 4)
 
-	var encoded := DotNetPacket.encode_batch(batch, new)
+	var encoded := GSNetPacket.encode_batch(batch, new)
 	var skipped_before := old.skipped
-	var decoded := DotNetPacket.decode_batch(encoded.value, old, 1, false)
+	var decoded := GSNetPacket.decode_batch(encoded.value, old, 1, false)
 	var got: Array = (decoded.value as Dictionary)["messages"] if decoded.ok else []
 	_check(
 		"the old end skips both unknown messages and keeps the one between them",
@@ -343,7 +343,7 @@ func _clock_snap_threshold() -> void:
 	# [b]The threshold is a DURATION, not a tick count.[/b] 60 ticks is one second at 60 Hz but
 	# 0.47 s at 128, so a 128-tick server snapped on any half-second hitch (a map change, a
 	# stalled frame) and a snap discards everything predicted.
-	var fast := DotNetClock.new(128, false)
+	var fast := GSNetClock.new(128, false)
 	fast.sync_from_server(10000, 0.0)
 	fast.sync_from_server(10000, 20.0)
 
@@ -359,7 +359,7 @@ func _clock_snap_threshold() -> void:
 	# [b]Half a second BEHIND is not drift; smoothing it is wrong.[/b] A hitch makes the clock lose
 	# the stall, and a client behind its target stamps every command for a tick the server has
 	# already simulated. Armed: smoothing this leaves the clock 60 ticks short.
-	var behind := DotNetClock.new(128, false)
+	var behind := GSNetClock.new(128, false)
 	behind.sync_from_server(10000, 0.0)
 	behind.sync_from_server(10000, 20.0)
 	var lead := behind.tick - behind.server_tick()
@@ -376,7 +376,7 @@ func _clock_snap_threshold() -> void:
 	_check("and two seconds still snaps", absi(behind.tick - before_snap) > 200)
 
 	# The same, at 60.
-	var slow := DotNetClock.new(60, false)
+	var slow := GSNetClock.new(60, false)
 	slow.sync_from_server(10000, 0.0)
 	slow.sync_from_server(10000, 20.0)
 	var slow_before := slow.tick
@@ -396,17 +396,17 @@ func _test_clock() -> void:
 	print("")
 	print("[clock]")
 
-	var authority := DotNetClock.new(60, true)
+	var authority := GSNetClock.new(60, true)
 	var ticks := authority.advance(1.0 / 60.0 * 3.0)
 	_check("advances by whole ticks", ticks == 3)
 	_check("tick advanced", authority.tick == 3)
 
 	# A long stall must not produce an unbounded catch-up burst.
-	var stalled := DotNetClock.new(60, true)
+	var stalled := GSNetClock.new(60, true)
 	var burst := stalled.advance(2.0, 8)
 	_check("catch-up is bounded", burst == 8)
 
-	var follower := DotNetClock.new(60, false)
+	var follower := GSNetClock.new(60, false)
 	_check("starts unsynced", not follower.is_synced())
 
 	# First sample adopts outright.
@@ -443,24 +443,24 @@ func _test_clock() -> void:
 	_clock_snap_threshold()
 
 	# Jitter must widen the margin, or a jittery connection loses inputs.
-	var jittery := DotNetClock.new(60, false)
+	var jittery := GSNetClock.new(60, false)
 	for i in range(20):
 		jittery.sync_from_server(100 + i, 50.0 + float(i % 2) * 80.0)
 	_check("jitter measured", jittery.jitter_ms() > 5.0)
 
 
-func _replication_wire_round_trip(config: DotNetConfig, second: DotNetIdentity, movement: Movement) -> void:
+func _replication_wire_round_trip(config: GSNetConfig, second: GSNetIdentity, movement: Movement) -> void:
 	# Round trip through the wire.
 	var receiver := _make_entity(&"player", 7)
 	add_child(receiver.get_parent())
-	var client_registry := DotNetRegistry.new(false, 2)
+	var client_registry := GSNetRegistry.new(false, 2)
 	client_registry.register(receiver, second.net_id, 0, config)
 
 	movement.position = Vector3(12.0, 3.0, -4.0)
 	movement.health = 55
 	movement.grounded = false
 
-	var state := DotNetWriter.new()
+	var state := GSNetWriter.new()
 	movement.write_state(state, movement.collect_dirty(7, true), 7)
 
 	var applied := (receiver.behaviours[0] as Movement).read_state(
@@ -478,10 +478,10 @@ func _replication_wire_round_trip(config: DotNetConfig, second: DotNetIdentity, 
 
 	# Owner-only properties must not reach observers.
 	var secret := movement.find_var(&"health")
-	secret.audience = DotNetVar.Audience.OWNER
+	secret.audience = GSNetVar.Audience.OWNER
 	_check("owner sees owner-only", secret.visible_to(7, 7))
 	_check("observer does not", not secret.visible_to(9, 7))
-	secret.audience = DotNetVar.Audience.EVERYONE
+	secret.audience = GSNetVar.Audience.EVERYONE
 
 
 
@@ -490,9 +490,9 @@ func _test_replication() -> void:
 	print("")
 	print("[replication]")
 
-	var config := DotNetConfig.new()
+	var config := GSNetConfig.new()
 
-	var registry := DotNetRegistry.new(true, 1)
+	var registry := GSNetRegistry.new(true, 1)
 	var identity := _make_entity(&"player", 7)
 	add_child(identity.get_parent())
 
@@ -519,7 +519,7 @@ func _test_replication() -> void:
 	var dirty := movement.collect_dirty(7, false)
 	_check("everything dirty initially", dirty.size() == 4)
 
-	var w := DotNetWriter.new()
+	var w := GSNetWriter.new()
 	movement.write_state(w, dirty, 7)
 	_check("nothing dirty after sending", movement.collect_dirty(7, false).is_empty())
 
@@ -554,7 +554,7 @@ func _check_render_timeline() -> void:
 	# `server_tick()` feeds `render_tick()`, so an estimate that only moved when a snapshot
 	# arrived would step the rendered tick with arrivals: the 20 Hz stepping interpolation
 	# exists to remove.
-	var clock := DotNetClock.new(60, false)
+	var clock := GSNetClock.new(60, false)
 	clock.adaptive_margin = false
 	clock.sync_from_server(1000, 0.0)
 
@@ -594,7 +594,7 @@ func _check_render_timeline() -> void:
 		clock.server_tick() == 1010
 	)
 	# A frame apart: a burst read in one frame counts once (see the dropped-time section).
-	for _i in range(DotNetClock.SETTLE_SAMPLES):
+	for _i in range(GSNetClock.SETTLE_SAMPLES):
 		var _none := clock.advance(0.0001)
 		clock.sync_from_server(1004, 0.0)
 	_check(
@@ -605,13 +605,13 @@ func _check_render_timeline() -> void:
 	_check_render_timeline_jitter()
 
 
-func _interest_caps_and_all(distance: DotNetInterestDistance, beacon: DotNetIdentity, observer: DotNetIdentity, all: Array[DotNetIdentity], context: Dictionary) -> void:
+func _interest_caps_and_all(distance: GSNetInterestDistance, beacon: GSNetIdentity, observer: GSNetIdentity, all: Array[GSNetIdentity], context: Dictionary) -> void:
 	# The reason the cap goes through prioritise: a cut that drops what the
 	# observer owns is the bug this family has already shipped once.
-	var crowd: Array[DotNetIdentity] = [beacon]
+	var crowd: Array[GSNetIdentity] = [beacon]
 	for i in range(20):
 		crowd.append(_make_entity(&"prop", 0))
-	var kept: Array[DotNetIdentity] = distance.prioritise(observer, crowd, 3, context)
+	var kept: Array[GSNetIdentity] = distance.prioritise(observer, crowd, 3, context)
 	var kept_ids := {}
 	for identity in kept:
 		kept_ids[identity.net_id] = true
@@ -619,7 +619,7 @@ func _interest_caps_and_all(distance: DotNetInterestDistance, beacon: DotNetIden
 
 	# "All" includes everything, which is what makes it the wrong default for a
 	# competitive game.
-	var everything := DotNetInterestAll.new()
+	var everything := GSNetInterestAll.new()
 	_check(
 		"all strategy includes the far entity",
 		everything.relevant_for(observer, all, 1, context).size() == 4
@@ -634,11 +634,11 @@ func _interest_caps_and_all(distance: DotNetInterestDistance, beacon: DotNetIden
 	_check("always_relevant survives the cap", capped_ids.has(4))
 
 
-func _interest_cache(near: DotNetIdentity, far: DotNetIdentity, beacon: DotNetIdentity, observer: DotNetIdentity, all: Array[DotNetIdentity], context: Dictionary) -> void:
+func _interest_cache(near: GSNetIdentity, far: GSNetIdentity, beacon: GSNetIdentity, observer: GSNetIdentity, all: Array[GSNetIdentity], context: Dictionary) -> void:
 	# The cache holds the entities relevant at one instant, so an entity spawned since is in
 	# nobody's set (not even its owner's) until it expires. On a host ticking faster than the
 	# wall clock the age never reaches the interval, and the entity is never sent at all.
-	var cached := DotNetInterestDistance.new()
+	var cached := GSNetInterestDistance.new()
 	cached.radius = 100.0
 	cached.evaluation_interval_sec = 5.0
 
@@ -656,7 +656,7 @@ func _interest_cache(near: DotNetIdentity, far: DotNetIdentity, beacon: DotNetId
 	newborn_beacon.always_relevant = true
 	newborn_beacon.net_id = 6
 
-	var grown: Array[DotNetIdentity] = [
+	var grown: Array[GSNetIdentity] = [
 		observer, near, far, beacon, newborn, newborn_beacon
 	]
 
@@ -684,10 +684,10 @@ func _interest_cache(near: DotNetIdentity, far: DotNetIdentity, beacon: DotNetId
 	)
 
 
-func _interest_grid(observer: DotNetIdentity, all: Array[DotNetIdentity], context: Dictionary) -> void:
+func _interest_grid(observer: GSNetIdentity, all: Array[GSNetIdentity], context: Dictionary) -> void:
 	# The grid must agree with the brute-force answer — that is the whole
 	# correctness requirement for a spatial index.
-	var grid := DotNetInterestGrid.new()
+	var grid := GSNetInterestGrid.new()
 	grid.radius = 100.0
 	grid.cell_size = 64.0
 	grid.evaluation_interval_sec = 0.0
@@ -703,15 +703,15 @@ func _interest_grid(observer: DotNetIdentity, all: Array[DotNetIdentity], contex
 
 	# The config's cell size reaches a grid the host assigned — a knob documented
 	# from the first version and applied by nothing.
-	var sized := DotNetManager.new()
+	var sized := GSNetManager.new()
 	sized.name = "Sized"
 	sized.is_server = true
 	sized.auto_tick = false
 	sized.config_file = ""
-	var sized_config := DotNetConfig.new()
+	var sized_config := GSNetConfig.new()
 	sized_config.interest_cell_size = 48.0
 	sized.config = sized_config
-	var sized_grid := DotNetInterestGrid.new()
+	var sized_grid := GSNetInterestGrid.new()
 	sized.interest = sized_grid
 	add_child(sized)
 	sized.setup()
@@ -724,10 +724,10 @@ func _test_interest() -> void:
 	print("[interest]")
 
 	_check("the stock strategies are thread-safe, a subclass is not unless it says so",
-		DotNetInterestDistance.new().is_thread_safe() and DotNetInterestGrid.new().is_thread_safe()
-		and DotNetInterestAll.new().is_thread_safe() and not PlainDistance.new().is_thread_safe())
+		GSNetInterestDistance.new().is_thread_safe() and GSNetInterestGrid.new().is_thread_safe()
+		and GSNetInterestAll.new().is_thread_safe() and not PlainDistance.new().is_thread_safe())
 
-	var config := DotNetConfig.new()
+	var config := GSNetConfig.new()
 	var context := {"tick": 0, "config": config}
 
 	var observer := _make_entity(&"player", 1)
@@ -751,9 +751,9 @@ func _test_interest() -> void:
 	beacon.always_relevant = true
 	beacon.net_id = 4
 
-	var all: Array[DotNetIdentity] = [observer, near, far, beacon]
+	var all: Array[GSNetIdentity] = [observer, near, far, beacon]
 
-	var distance := DotNetInterestDistance.new()
+	var distance := GSNetInterestDistance.new()
 	distance.radius = 100.0
 	distance.evaluation_interval_sec = 0.0
 

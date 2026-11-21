@@ -1,6 +1,6 @@
 extends Node
 
-## DotNetInterestGrid's script index against dot-sim's DotSimInterestGrid: same candidates in the same order over
+## GSNetInterestGrid's script index against dot-sim's GSSimInterestGrid: same candidates in the same order over
 ## seeded worlds (flat and 3D binning, negative coordinates, always-relevant entities), then a microbench of
 ## _prepare plus one _candidates per observer. Without the native class it prints SKIPPED and exits 0
 ## (exit 1 under GS_NATIVE_REQUIRED=1).
@@ -11,9 +11,9 @@ const OBSERVERS := 32
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.ERROR)
-	if not ClassDB.class_exists(&"DotSimInterestGrid"):
-		print("SKIPPED: DotSimInterestGrid is not loaded")
+	GSLog.set_level(GSLog.Level.ERROR)
+	if not ClassDB.class_exists(&"GSSimInterestGrid"):
+		print("SKIPPED: GSSimInterestGrid is not loaded")
 		get_tree().quit(1 if OS.get_environment("GS_NATIVE_REQUIRED") == "1" else 0)
 		return
 	var bad := 0
@@ -25,12 +25,12 @@ func _ready() -> void:
 	get_tree().quit(1 if bad > 0 else 0)
 
 
-func _world(seed_i: int, n: int) -> Array[DotNetIdentity]:
+func _world(seed_i: int, n: int) -> Array[GSNetIdentity]:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1000 + seed_i
-	var all: Array[DotNetIdentity] = []
+	var all: Array[GSNetIdentity] = []
 	for i in n:
-		var id := DotNetIdentity.new()
+		var id := GSNetIdentity.new()
 		id.net_id = i + 1
 		id._frozen_position = Vector3(rng.randf_range(-900, 900), rng.randf_range(-40, 80), rng.randf_range(-900, 900))
 		id._position_frozen = true
@@ -39,8 +39,8 @@ func _world(seed_i: int, n: int) -> Array[DotNetIdentity]:
 	return all
 
 
-func _grid(native: bool, flat: bool) -> DotNetInterestGrid:
-	var g := DotNetInterestGrid.new()
+func _grid(native: bool, flat: bool) -> GSNetInterestGrid:
+	var g := GSNetInterestGrid.new()
 	g.native = native
 	g.ignore_vertical = flat
 	g.cell_size = 64.0
@@ -52,7 +52,7 @@ func _ids(arr: Variant) -> PackedInt32Array:
 	var out := PackedInt32Array()
 	if arr == null:
 		return out
-	for id: DotNetIdentity in arr:
+	for id: GSNetIdentity in arr:
 		out.append(id.net_id)
 	return out
 
@@ -68,7 +68,7 @@ func _compare(seed_i: int, flat: bool) -> int:
 		print("FAIL: native index not used")
 		return 1
 	for o in OBSERVERS:
-		var obs: DotNetIdentity = all[o * 13]
+		var obs: GSNetIdentity = all[o * 13]
 		if _ids(a._candidates(obs, all, {})) != _ids(b._candidates(obs, all, {})):
 			bad += 1
 	print("seed %d flat=%s: %d observers, %d differing" % [seed_i, flat, OBSERVERS, bad])

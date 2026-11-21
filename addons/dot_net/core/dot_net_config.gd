@@ -1,12 +1,12 @@
 @tool
-class_name DotNetConfig
-extends DotConfig
+class_name GSNetConfig
+extends GSConfig
 
 ## The most parts one snapshot can be cut into: the part trailer is four bits a field. Read it as
-## [constant DotNetManager.MAX_SNAPSHOT_PARTS]; it lives here so this file does not name the manager.
+## [constant GSNetManager.MAX_SNAPSHOT_PARTS]; it lives here so this file does not name the manager.
 const MAX_SNAPSHOT_PARTS := 16
 
-## Everything configurable about netcode. Layered like every [DotConfig]: exported defaults, then a
+## Everything configurable about netcode. Layered like every [GSConfig]: exported defaults, then a
 ## JSON file, then [code]DOT_NET_*[/code] environment variables, then [code]--net-*[/code] arguments.
 
 @export_group("Simulation")
@@ -28,15 +28,15 @@ const MAX_SNAPSHOT_PARTS := 16
 @export var skip_idle_snapshots: bool = true
 
 ## Whether peers in step share one dirty set per entity per snapshot ([method
-## DotNetBehaviour.collect_dirty]).
+## GSNetBehaviour.collect_dirty]).
 @export var share_dirty_sets: bool = true
 
 ## Worker threads that build per-peer snapshots: 0 builds every peer's on the thread that ticks (the
-## default), -1 is the processor count less one (at most [constant DotParallel.AUTO_MAX]), n is at most
+## default), -1 is the processor count less one (at most [constant GSParallel.AUTO_MAX]), n is at most
 ## n.
 @export_range(-1, 64) var snapshot_workers: int = 0
 
-## Build server snapshots in the optional native library ([DotNetNative]): the same bytes, several
+## Build server snapshots in the optional native library ([GSNetNative]): the same bytes, several
 ## times cheaper; falls back to GDScript where it cannot load. See docs/native.md.
 ## Environment [code]GS_NET_NATIVE[/code], command line [code]--net-native[/code].
 @export var native: bool = true
@@ -46,37 +46,37 @@ const MAX_SNAPSHOT_PARTS := 16
 ## to the executable. Environment [code]GS_NET_NATIVE_PATH[/code].
 @export var native_path: String = ""
 
-## With [member native], also run [DotNetInterestDistance]'s selection and the budget's ordering in
+## With [member native], also run [GSNetInterestDistance]'s selection and the budget's ordering in
 ## the library: the same bytes, a third of the tick at 100 clients. Ignored for any other strategy.
 ## Environment [code]GS_NET_NATIVE_INTEREST=0[/code] or [code]--net-native-interest=false[/code] turns it off.
 @export var native_interest: bool = true
 
 ## How the native core reads each behaviour's values when a snapshot opens: [code]1[/code] reads the
 ## properties in the library (no GDScript call per behaviour), [code]0[/code] calls
-## [code]DotNetBehaviour._native_values[/code] for each as before (the fallback), [code]2[/code] does both
+## [code]GSNetBehaviour._native_values[/code] for each as before (the fallback), [code]2[/code] does both
 ## and compares: a difference is counted ([code]read_mismatches[/code] in [code]describe()[/code]), logged
 ## once, and GDScript's values are sent. The same bytes either way. Environment [code]DOT_NET_NATIVE_READS[/code],
 ## command line [code]--net-native-reads[/code].
 @export_range(0, 2) var native_reads: int = 1
 
-## Encode and decode snapshot states in GameSpice Sim's native codec ([DotNetSimCodec]) when GameSpice Sim is loaded: same bytes and values, cheaper;
+## Encode and decode snapshot states in GameSpice Sim's native codec ([GSNetSimCodec]) when GameSpice Sim is loaded: same bytes and values, cheaper;
 ## the GDScript codec otherwise and always on the web. Covers what [member native] does not (a client's decode, a server without GameSpice Net's
 ## library). [code]GS_NET_SIM_CODEC=0[/code] or [code]--net-sim-codec=false[/code] turns it off.
 @export var sim_codec: bool = true
 
-## Draw remote entities in dot-sim's native interpolator ([code]DotSimInterpolator[/code]) when dot-sim is loaded: same values, cheaper
-## per frame; [DotNetInterpolator]'s GDScript otherwise and always on the web. [code]GS_NET_SIM_INTERP=0[/code] or
+## Draw remote entities in dot-sim's native interpolator ([code]GSSimInterpolator[/code]) when dot-sim is loaded: same values, cheaper
+## per frame; [GSNetInterpolator]'s GDScript otherwise and always on the web. [code]GS_NET_SIM_INTERP=0[/code] or
 ## [code]--net-sim-interp=false[/code] turns it off.
 @export var sim_interp: bool = true
 
 ## Leave a remote entity alone for a frame when its interpolated draw equals what was written the frame before and no
-## snapshot arrived since: no writes, no [method DotNetBehaviour._net_interpolated]. Only for games whose hook just
+## snapshot arrived since: no writes, no [method GSNetBehaviour._net_interpolated]. Only for games whose hook just
 ## copies the interpolated values (an idle crowd stops costing per frame). Off by default.
 @export var skip_settled_interp: bool = false
 
 ## Ticks a client's input timeline runs ahead of the server, beyond half the RTT.
 ##
-## See [DotNetClock]. Higher costs input latency and reduces late commands.
+## See [GSNetClock]. Higher costs input latency and reduces late commands.
 @export_range(0, 20, 1) var input_margin_ticks: int = 2
 
 ## Grow the input margin from measured jitter.
@@ -125,8 +125,8 @@ const MAX_SNAPSHOT_PARTS := 16
 ## predicted tick produced.
 @export var skip_matching_replays: bool = false
 
-## Whether [method DotNetManager.predict_tick] rounds each input to the wire
-## ([method DotNetInput.round_trip]) before it is simulated, so the prediction runs on
+## Whether [method GSNetManager.predict_tick] rounds each input to the wire
+## ([method GSNetInput.round_trip]) before it is simulated, so the prediction runs on
 ## the command the server decodes. On by default; off only to measure what it costs not to.
 @export var predict_wire_input: bool = true
 
@@ -150,12 +150,12 @@ const MAX_SNAPSHOT_PARTS := 16
 @export_range(0.1, 100.0, 0.1) var reconcile_large_snap_distance: float = 5.0
 
 ## Longest a client carries a remote entity along its replicated velocity when predicting against it,
-## in seconds ([method DotNetBehaviour.extrapolated_value]). 0, the default, predicts against where it
+## in seconds ([method GSNetBehaviour.extrapolated_value]). 0, the default, predicts against where it
 ## was last heard.
 @export_range(0.0, 1.0, 0.01) var remote_extrapolation_sec: float = 0.0
 
 ## Seconds the server repeats a silent peer's last input before it applies that input
-## neutralised ([method DotNetInput._neutralise]): a lost packet keeps the player moving, a
+## neutralised ([method GSNetInput._neutralise]): a lost packet keeps the player moving, a
 ## blackout does not run them on for its whole length. 0 repeats for ever.
 @export_range(0.0, 5.0, 0.05) var starved_input_hold_sec: float = 0.25
 
@@ -200,13 +200,13 @@ const MAX_SNAPSHOT_PARTS := 16
 
 @export_group("Bandwidth")
 
-## The largest snapshot payload [DotNetManager] hands to [member DotNetManager.send_fn]. A snapshot
+## The largest snapshot payload [GSNetManager] hands to [member GSNetManager.send_fn]. A snapshot
 ## that would be bigger is sent as several parts, each a snapshot of its own entities that applies
 ## without the others, so a lost part loses only what was in it (docs/wire.md#snapshot-parts).
 @export_range(256, 8192, 64) var mtu: int = 1200
 
 ## The most parts one snapshot is cut into; what does not fit waits for the next. 0 means the wire's most (16): the part trailer is four bits a
-## field ([constant DotNetManager.MAX_SNAPSHOT_PARTS]), so more would be a new wire format. A negative or over-16 value fails [method validate]
+## field ([constant GSNetManager.MAX_SNAPSHOT_PARTS]), so more would be a new wire format. A negative or over-16 value fails [method validate]
 ## rather than being clamped. (API 21.)
 @export var max_snapshot_parts: int = 16
 
@@ -231,7 +231,7 @@ const MAX_SNAPSHOT_PARTS := 16
 @export var interest_cell_size: float = 128.0
 
 ## Entities past [member far_distance] from a peer are sent in one snapshot of this many. 1 is off.
-## Applied to the default distance strategy ([member DotNetInterest.far_every]); a game that builds
+## Applied to the default distance strategy ([member GSNetInterest.far_every]); a game that builds
 ## its own strategy sets it there.
 @export_range(1, 16, 1) var far_every: int = 1
 
@@ -245,7 +245,7 @@ const MAX_SNAPSHOT_PARTS := 16
 
 ## Entities built into one peer's snapshot, at most, taken in the budget's accumulated-priority order;
 ## the rest wait their turn, so each entity's update rate follows its score ([member
-## DotNetInterest.distance_falloff]). What the peer owns always goes. 0 is off.
+## GSNetInterest.distance_falloff]). What the peer owns always goes. 0 is off.
 @export_range(0, 4096, 1) var peer_send_budget: int = 0
 
 @export_group("Limits")
@@ -269,31 +269,31 @@ func cli_prefix() -> String:
 	return "--net-"
 
 
-func validate() -> DotResult:
+func validate() -> GSResult:
 	if max_snapshot_parts < 0 or max_snapshot_parts > 16:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"max_snapshot_parts must be 0 (the wire's 16) or 1..16; the part trailer is four bits a field.",
 			str(max_snapshot_parts)
 		)
 
 	if native_reads < 0 or native_reads > 2:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"native_reads must be 0 (GDScript's _native_values), 1 (read in the library) or 2 (both, compared).",
 			str(native_reads)
 		)
 
 	if snapshot_workers < -1:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"snapshot_workers must be -1 (automatic), 0 (off) or a worker count.",
 			str(snapshot_workers)
 		)
 
 	if snapshot_rate > tick_rate:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"snapshot_rate must not exceed tick_rate.",
 			"%d > %d" % [snapshot_rate, tick_rate]
 		)
@@ -301,7 +301,7 @@ func validate() -> DotResult:
 	if tick_rate % snapshot_rate != 0:
 		# Not fatal — it works — but the send spacing is uneven and shows up as
 		# jitter that no interpolator can remove, so it is worth saying loudly.
-		DotLog.warn(
+		GSLog.warn(
 			"net",
 			"tick_rate is not a multiple of snapshot_rate; sends will be unevenly "
 			+ "spaced and will look like jitter",
@@ -309,20 +309,20 @@ func validate() -> DotResult:
 		)
 
 	if history_sec <= max_rewind_sec:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"history_sec must exceed max_rewind_sec.",
 			"a rewind would land before the oldest sample"
 		)
 
 	if world_extent <= 0.0:
-		return DotResult.fail(
-			DotError.CODE_INVALID, "world_extent must be positive."
+		return GSResult.fail(
+			GSError.CODE_INVALID, "world_extent must be positive."
 		)
 
 	if reconcile_snap_distance <= reconcile_position_epsilon:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"reconcile_snap_distance must exceed reconcile_position_epsilon.",
 			"otherwise every correction snaps"
 		)
@@ -332,14 +332,14 @@ func validate() -> DotResult:
 	# nothing else.
 	var input_ticks_needed := mini(int(max_rewind_sec * float(tick_rate)) * 2, 512)
 	if input_history_ticks < input_ticks_needed:
-		DotLog.info(
+		GSLog.info(
 			"net",
 			"input_history_ticks raised to cover the configured rewind",
 			{"was": input_history_ticks, "now": input_ticks_needed}
 		)
 		input_history_ticks = input_ticks_needed
 
-	return DotResult.success(null)
+	return GSResult.success(null)
 
 
 ## Ticks between state broadcasts.
@@ -354,14 +354,14 @@ func snapshot_interval() -> float:
 
 ## Interpolation delay in seconds, from the buffer setting. Measured in the snapshots the manager
 ## actually sends — every [method ticks_per_snapshot] ticks, an integer — so it agrees with [method
-## DotNetInterpolator.delay_ms] when the snapshot rate does not divide the tick rate.
+## GSNetInterpolator.delay_ms] when the snapshot rate does not divide the tick rate.
 func interpolation_delay() -> float:
 	return interpolation_buffer * float(ticks_per_snapshot()) / float(maxi(1, tick_rate))
 
 
 ## Bits used per position axis, derived from the world size and step.
 func position_bits() -> int:
-	return DotNetWriter.bits_for_step(
+	return GSNetWriter.bits_for_step(
 		-world_extent, world_extent, position_step
 	)
 
@@ -405,13 +405,13 @@ func describe_budget() -> PackedStringArray:
 			(float(transform_bits) / 8.0 * float(snapshot_rate))
 		)
 		out.append("budget            %s/s ≈ %d entities/client" % [
-			DotPaths.format_bytes(per_client_budget), entities
+			GSPaths.format_bytes(per_client_budget), entities
 		])
 
 	return out
 
 
-## [member max_snapshot_parts] as a count: 0 is the wire's [constant DotNetManager.MAX_SNAPSHOT_PARTS].
+## [member max_snapshot_parts] as a count: 0 is the wire's [constant GSNetManager.MAX_SNAPSHOT_PARTS].
 func snapshot_part_cap() -> int:
 	return MAX_SNAPSHOT_PARTS if max_snapshot_parts <= 0 else mini(max_snapshot_parts, MAX_SNAPSHOT_PARTS)
 

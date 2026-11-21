@@ -1,7 +1,7 @@
-class_name DotNetCostProbe
+class_name GSNetCostProbe
 extends RefCounted
 
-## Reports bytes per message class to GameSpice Profiler's [code]DotProfilerNetCost[/code] when that addon is installed. GameSpice Net does not depend on it: the class is found by name once, and every call is one bool test while the profiler is absent or not recording.
+## Reports bytes per message class to GameSpice Profiler's [code]GSProfilerNetCost[/code] when that addon is installed. GameSpice Net does not depend on it: the class is found by name once, and every call is one bool test while the profiler is absent or not recording.
 
 const IN := 0
 const OUT := 1
@@ -41,6 +41,6 @@ static func bind(script: Script) -> void:
 static func _find() -> void:
 	_looked = true
 	for entry: Dictionary in ProjectSettings.get_global_class_list():
-		if entry.get("class") == &"DotProfilerNetCost":
+		if entry.get("class") == &"GSProfilerNetCost":
 			_script = load(String(entry.get("path"))) as Script
 			return

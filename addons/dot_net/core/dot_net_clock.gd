@@ -1,4 +1,4 @@
-class_name DotNetClock
+class_name GSNetClock
 extends "dot_net_clock_timing.gd"
 
 ## Fixed-tick simulation time, and keeping a client's copy aligned with the server's.
@@ -49,7 +49,7 @@ static func adopt_tick_rate(rate: int) -> void:
 	if raised:
 		Engine.max_physics_steps_per_frame = steps
 	Engine.physics_ticks_per_second = rate
-	DotLog.debug(CHANNEL, "adopted a tick rate", {
+	GSLog.debug(CHANNEL, "adopted a tick rate", {
 		"rate": rate, "max_steps": Engine.max_physics_steps_per_frame, "raised": raised,
 	})
 
@@ -133,7 +133,7 @@ func advance(delta: float, max_ticks: int = 8) -> int:
 		if not is_authority and _synced:
 			_received_tick += dropped
 
-		DotLog.debug(
+		GSLog.debug(
 			CHANNEL, "dropped ticks to avoid a catch-up spiral", {"ticks": dropped}
 		)
 
@@ -250,7 +250,7 @@ func _credit_dropped(gap: float) -> void:
 		if lost > LEAD_SMOOTH_SECONDS:
 			_settle_open = false
 	if ticks >= 1.0:
-		DotLog.debug(CHANNEL, "the engine dropped time; local time follows the wall clock",
+		GSLog.debug(CHANNEL, "the engine dropped time; local time follows the wall clock",
 			{"seconds": snappedf(lost, 0.001), "ticks": snappedf(ticks, 0.1),
 			"tick": tick, "received": _received_tick, "synced": _synced})
 
@@ -361,11 +361,11 @@ func sync_from_server(server_tick: int, rtt_ms: float) -> void:
 	var first := not _synced or (not _synced_with_rtt and _rtt_ms > 0.0)
 	_measure_pace(server_tick, not _synced)
 	_follow_arrival(server_tick, first)
-	if DotLog.enabled(DotLog.Level.TRACE, CHANNEL):
+	if GSLog.enabled(GSLog.Level.TRACE, CHANNEL):
 		var traced := _state_fields()
 		traced["server_tick"] = server_tick
 		traced["rtt_in"] = snappedf(rtt_ms, 0.1)
-		DotLog.trace(CHANNEL, "snapshot sampled", traced)
+		GSLog.trace(CHANNEL, "snapshot sampled", traced)
 
 	if _lead_live and not first:
 		_follow_reported_lead()
@@ -382,7 +382,7 @@ func sync_from_server(server_tick: int, rtt_ms: float) -> void:
 		_synced = true
 		_synced_with_rtt = _rtt_ms > 0.0
 		_drift_scale = 1.0
-		DotLog.info(
+		GSLog.info(
 			CHANNEL,
 			"clock synced",
 			{"tick": tick, "rtt": int(_rtt_ms), "lead": _target_lead()}
@@ -396,7 +396,7 @@ func sync_from_server(server_tick: int, rtt_ms: float) -> void:
 		var snap_fields := _state_fields()
 		snap_fields["error_ticks"] = error
 		snap_fields["snaps"] = _snap_count
-		DotLog.warn(CHANNEL, "clock snapped; predicted state is stale", snap_fields)
+		GSLog.warn(CHANNEL, "clock snapped; predicted state is stale", snap_fields)
 		tick = target
 		_drift_scale = 1.0
 		return
@@ -406,7 +406,7 @@ func sync_from_server(server_tick: int, rtt_ms: float) -> void:
 		# the server already simulated and discarded as late; smoothing at [constant MAX_DRIFT_RATE] would
 		# take seconds.
 		_catch_up_count += 1
-		DotLog.debug(
+		GSLog.debug(
 			CHANNEL,
 			"clock caught up; it had fallen behind the server",
 			{"behind_ticks": error, "catch_ups": _catch_up_count}
@@ -433,7 +433,7 @@ func _follow_reported_lead() -> void:
 		var to := maxi(_received_tick + 1 + input_margin_ticks, int(ceilf(_lead_position())))
 		_floor_count += 1
 		_catch_up_count += 1
-		DotLog.debug(CHANNEL, "clock caught up; it was behind the server",
+		GSLog.debug(CHANNEL, "clock caught up; it was behind the server",
 			{"behind_ticks": to - tick, "floors": _floor_count})
 		tick = to
 		_drift_scale = 1.0
@@ -449,7 +449,7 @@ func _follow_reported_lead() -> void:
 		fields["error_ticks"] = behind
 		fields["snaps"] = _snap_count
 		fields["round_trip_error"] = round_trip - tick
-		DotLog.warn(CHANNEL, "clock snapped; predicted state is stale", fields)
+		GSLog.warn(CHANNEL, "clock snapped; predicted state is stale", fields)
 		tick += behind
 		_drift_scale = 1.0
 
@@ -557,11 +557,11 @@ func _set_pace(pace: float) -> void:
 		var fields := _state_fields()
 		fields["pace"] = snappedf(pace, 0.001)
 		fields["was"] = snappedf(_pace, 0.001)
-		DotLog.info(CHANNEL, "clock follows the server's pace", fields)
+		GSLog.info(CHANNEL, "clock follows the server's pace", fields)
 	_pace = pace
 
 
-## What the server said about this client's commands: the one for [param input_tick] was the latest to arrive in the last period, [param arrival_lead] ticks before the server needed it (0 just in time, below 0 late). Called by [method DotNetManager.receive_snapshot].
+## What the server said about this client's commands: the one for [param input_tick] was the latest to arrive in the last period, [param arrival_lead] ticks before the server needed it (0 just in time, below 0 late). Called by [method GSNetManager.receive_snapshot].
 ##
 ## Measured against the time the command was sent ([member _lead_at]), less what it arrived with, plus [member lead_slack_ticks]: that already counts every correction since, so a report a round trip old never corrects twice. The downlink is not in it.
 func note_input_lead(input_tick: int, arrival_lead: int) -> void:
@@ -586,7 +586,7 @@ func note_input_lead(input_tick: int, arrival_lead: int) -> void:
 		var live_fields := _state_fields()
 		live_fields["lead"] = tick - server_tick()
 		live_fields["arrival_lead"] = arrival_lead
-		DotLog.info(CHANNEL, "input lead follows the server's reports", live_fields)
+		GSLog.info(CHANNEL, "input lead follows the server's reports", live_fields)
 
 
 ## Ticks the input timeline is behind (+) or ahead (-) of where it is being steered: the
@@ -665,7 +665,7 @@ func _steer_lead(delta: float) -> void:
 	if error > LEAD_RAISE_RATE * LEAD_SMOOTH_SECONDS * float(tick_rate):
 		var jump := int(ceilf(error))
 		_catch_up_count += 1
-		DotLog.debug(CHANNEL, "clock caught up to the reported lead",
+		GSLog.debug(CHANNEL, "clock caught up to the reported lead",
 			{"behind_ticks": jump, "catch_ups": _catch_up_count})
 		tick += jump
 		_drift_scale = 1.0

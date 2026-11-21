@@ -1,5 +1,5 @@
 @tool
-class_name DotNetInterest
+class_name GSNetInterest
 extends Resource
 
 ## Decides which entities a client is told about. Subclass to define your own rule. [b]The single
@@ -17,7 +17,7 @@ const CHANNEL := "net.interest"
 
 ## Entities past [member far_distance] are sent in one snapshot of this many, staggered by net id
 ## (1 is off). The observer's own are never thinned; keep it near
-## [member DotNetConfig.interpolation_buffer] or far mirrors run out of samples.
+## [member GSNetConfig.interpolation_buffer] or far mirrors run out of samples.
 @export_range(1, 16, 1) var far_every: int = 1
 
 ## Metres beyond which an entity counts as far for [member far_every]. 0 is never far.
@@ -27,7 +27,7 @@ const CHANNEL := "net.interest"
 @export var far_distance_by_tag: Dictionary = {}
 
 ## Every peer that is far from an entity skips the same snapshots of it, rather than each its own.
-## Peers in step then share one dirty set and one encoding of it (DotNetBehaviour's sharing);
+## Peers in step then share one dirty set and one encoding of it (GSNetBehaviour's sharing);
 ## staggered per peer, each far peer is a different record and costs a full per-peer build.
 @export var far_coherent: bool = false
 
@@ -36,27 +36,27 @@ const CHANNEL := "net.interest"
 ## With a power-of-two [member far_every] and [member far_coherent] the bands nest, so they still share.
 @export_range(1, 4, 1) var far_tiers: int = 1
 
-## Degrees either side of the observer's [member DotNetIdentity.interest_aim] inside which a far
+## Degrees either side of the observer's [member GSNetIdentity.interest_aim] inside which a far
 ## entity never drops past the first band: it still goes every [member far_every], however far.
 ## What a scoped shooter looks at keeps enough samples for lag compensation. 0 is off.
 @export_range(0.0, 180.0, 0.5) var aim_cone_deg: float = 0.0
 
 ## How fast the default [method _score] falls with distance: [code]priority / (1 + d * this)[/code].
-## Under [member DotNetConfig.peer_send_budget] an entity's share of snapshots follows its score,
+## Under [member GSNetConfig.peer_send_budget] an entity's share of snapshots follows its score,
 ## so 0.1 sends one 100 m away about a tenth as often as one at your feet.
 @export_range(0.0, 1.0, 0.001) var distance_falloff: float = 0.01
 
 ## Counts [method invalidate] calls, so the native core drops the caches it holds for this strategy.
 var invalidation_serial: int = 0
 
-## Whether the native core can run this strategy's interest ([member DotNetConfig.native_interest]).
+## Whether the native core can run this strategy's interest ([member GSNetConfig.native_interest]).
 ## False unless a built-in strategy says so for itself.
 func native_interest_ok() -> bool:
 	return false
 
 
-## What the native core needs of this strategy: see [method DotNetInterestDistance.native_config].
-func native_config(_config: DotNetConfig) -> Dictionary:
+## What the native core needs of this strategy: see [method GSNetInterestDistance.native_config].
+func native_config(_config: GSNetConfig) -> Dictionary:
 	return {}
 
 
@@ -73,8 +73,8 @@ var _cap_state: Dictionary = {}
 ## Whether [param observer] should know about [param entity]. [param context] carries whatever the
 ## manager knows: [code]tick[/code], [code]peer_id[/code], and the config.
 func _is_relevant(
-	_observer: DotNetIdentity,
-	_entity: DotNetIdentity,
+	_observer: GSNetIdentity,
+	_entity: GSNetIdentity,
 	_context: Dictionary
 ) -> bool:
 	return true
@@ -84,8 +84,8 @@ func _is_relevant(
 ## return a candidate set directly instead of being asked about every entity in the world — which is
 ## the difference between O(n) and O(visible) per observer.
 func _candidates(
-	_observer: DotNetIdentity,
-	_all: Array[DotNetIdentity],
+	_observer: GSNetIdentity,
+	_all: Array[GSNetIdentity],
 	_context: Dictionary
 ) -> Variant:
 	return null
@@ -93,15 +93,15 @@ func _candidates(
 
 ## Called once per snapshot before any queries, for strategies with an index to
 ## rebuild.
-func _prepare(_all: Array[DotNetIdentity], _context: Dictionary) -> void:
+func _prepare(_all: Array[GSNetIdentity], _context: Dictionary) -> void:
 	pass
 
 
 ## Relative importance of an entity to an observer, for prioritisation. Consulted when the bandwidth
 ## budget cannot carry everything relevant.
 func _score(
-	observer: DotNetIdentity,
-	entity: DotNetIdentity,
+	observer: GSNetIdentity,
+	entity: GSNetIdentity,
 	_context: Dictionary
 ) -> float:
 	if observer == null or entity == null:
@@ -119,18 +119,18 @@ func thins() -> bool:
 ## [param relevant] without the far entities whose turn this snapshot is not (see
 ## [member far_every]), appended to [param out]. Reads frozen positions and fields only, so a
 ## worker may run it; [param out] is untyped there (see [method relevance]).
-func thin_into(out: Array, observer: DotNetIdentity, relevant: Array, peer_id: int, context: Dictionary) -> void:
+func thin_into(out: Array, observer: GSNetIdentity, relevant: Array, peer_id: int, context: Dictionary) -> void:
 	if observer == null or not thins():
 		out.append_array(relevant)
 		return
-	var config: DotNetConfig = context.get("config")
+	var config: GSNetConfig = context.get("config")
 	var index := int(context.get("tick", 0)) / (config.ticks_per_snapshot() if config != null else 1)
 	if not far_coherent:
 		index += peer_id
 	var here := observer.world_position()
 	var aim := observer.interest_aim
 	var aim_cos := cos(deg_to_rad(aim_cone_deg)) if aim_cone_deg > 0.0 and aim != Vector3.ZERO else 1.0
-	for identity: DotNetIdentity in relevant:
+	for identity: GSNetIdentity in relevant:
 		var turn := index + identity.net_id
 		if identity.owner_peer_id == observer.owner_peer_id or turn % far_every == 0 and far_tiers == 1:
 			out.append(identity)
@@ -159,7 +159,7 @@ static func _in_cone(here: Vector3, aim: Vector3, cos_limit: float, there: Vecto
 	return aim.dot(there - here) >= cos_limit * sqrt(d2)
 
 
-func _far_distance_for(entity: DotNetIdentity) -> float:
+func _far_distance_for(entity: GSNetIdentity) -> float:
 	for tag in entity.interest_tags:
 		if far_distance_by_tag.has(tag):
 			return float(far_distance_by_tag[tag])
@@ -167,7 +167,7 @@ func _far_distance_for(entity: DotNetIdentity) -> float:
 
 
 ## Whether [method relevance], [method ranked] and [method _score] may run on a worker thread, for
-## several peers at once ([member DotNetConfig.snapshot_workers]).
+## several peers at once ([member GSNetConfig.snapshot_workers]).
 func is_thread_safe() -> bool:
 	return false
 
@@ -175,11 +175,11 @@ func is_thread_safe() -> bool:
 ## The entities [param observer] should receive, with the cache and linger applied. The manager's own
 ## path, writing the cache as it goes.
 func relevant_for(
-	observer: DotNetIdentity,
-	all: Array[DotNetIdentity],
+	observer: GSNetIdentity,
+	all: Array[GSNetIdentity],
 	peer_id: int,
 	context: Dictionary
-) -> Array[DotNetIdentity]:
+) -> Array[GSNetIdentity]:
 	var now := int(context["now_ms"]) if context.has("now_ms") else Time.get_ticks_msec()
 
 	if evaluation_interval_sec > 0.0 and _cache.has(peer_id):
@@ -188,7 +188,7 @@ func relevant_for(
 
 		if age < evaluation_interval_sec:
 			# Pinned before the cache is consulted, not after [method _evaluate] runs.
-			var resolved_typed: Array[DotNetIdentity] = []
+			var resolved_typed: Array[GSNetIdentity] = []
 			_resolve_pinned_into(resolved_typed, cached["ids"], observer, all)
 			return resolved_typed
 
@@ -233,8 +233,8 @@ func relevant_for(
 ## two null when the cached answer was used, for [method commit_relevance] to store. What a snapshot
 ## built on a worker thread asks, since the cache is shared by every peer.
 func relevance(
-	observer: DotNetIdentity,
-	all: Array[DotNetIdentity],
+	observer: GSNetIdentity,
+	all: Array[GSNetIdentity],
 	peer_id: int,
 	context: Dictionary
 ) -> Array:
@@ -254,7 +254,7 @@ func relevance(
 	_evaluate_into(relevant, observer, all, context)
 
 	var ids := {}
-	for identity: DotNetIdentity in relevant:
+	for identity: GSNetIdentity in relevant:
 		ids[identity.net_id] = true
 
 	# Anything that was relevant and no longer is keeps being sent for a while. Without this an entity
@@ -295,11 +295,11 @@ func commit_relevance(peer_id: int, answer: Array) -> void:
 
 ## Adds what an observer must receive whatever the cache says. The same two exemptions [method
 ## _evaluate] applies, applied to a cached answer: an entity the observer owns, and anything marked
-## [member DotNetIdentity.always_relevant].
+## [member GSNetIdentity.always_relevant].
 func _pinned(
 	ids: Dictionary,
-	observer: DotNetIdentity,
-	all: Array[DotNetIdentity]
+	observer: GSNetIdentity,
+	all: Array[GSNetIdentity]
 ) -> Dictionary:
 	var out := ids
 
@@ -321,11 +321,11 @@ func _pinned(
 
 
 func _evaluate(
-	observer: DotNetIdentity,
-	all: Array[DotNetIdentity],
+	observer: GSNetIdentity,
+	all: Array[GSNetIdentity],
 	context: Dictionary
-) -> Array[DotNetIdentity]:
-	var out: Array[DotNetIdentity] = []
+) -> Array[GSNetIdentity]:
+	var out: Array[GSNetIdentity] = []
 	_evaluate_into(out, observer, all, context)
 	return out
 
@@ -334,14 +334,14 @@ func _evaluate(
 ## (see [method relevance]).
 func _evaluate_into(
 	out: Array,
-	observer: DotNetIdentity,
-	all: Array[DotNetIdentity],
+	observer: GSNetIdentity,
+	all: Array[GSNetIdentity],
 	context: Dictionary
 ) -> void:
 	var candidates: Variant = _candidates(observer, all, context)
 	var pool: Array = candidates if candidates is Array else all
 
-	for identity: DotNetIdentity in pool:
+	for identity: GSNetIdentity in pool:
 		# always_relevant bypasses the strategy entirely. For objectives, bosses and
 		# anything whose absence would be a bug rather than an optimisation.
 		if identity.always_relevant:
@@ -362,19 +362,19 @@ func _evaluate_into(
 ## Sorts by score and truncates to the entity cap. The backstop when interest management alone is not
 ## enough — a hundred players in one room.
 func prioritise(
-	observer: DotNetIdentity,
-	entities: Array[DotNetIdentity],
+	observer: GSNetIdentity,
+	entities: Array[GSNetIdentity],
 	limit: int,
 	context: Dictionary,
 	peer_id: int = 0,
 	scores: Dictionary = {}
-) -> Array[DotNetIdentity]:
+) -> Array[GSNetIdentity]:
 	_note_cap(peer_id, entities.size(), limit, context)
 
 	if limit <= 0 or entities.size() <= limit:
 		return entities
 
-	var out: Array[DotNetIdentity] = []
+	var out: Array[GSNetIdentity] = []
 	_rank_into(out, observer, entities, limit, context, scores)
 	return out
 
@@ -382,7 +382,7 @@ func prioritise(
 ## [method prioritise] without its bookkeeping (the cap's log lines, see [method note_cap]),
 ## into an untyped list: the part a worker thread may run.
 func ranked(
-	observer: DotNetIdentity,
+	observer: GSNetIdentity,
 	entities: Array,
 	limit: int,
 	context: Dictionary,
@@ -399,16 +399,16 @@ func ranked(
 ## Every entity's [method _score] for [param observer], by net id: what the entity cap and the
 ## budget both rank by, worked out once per peer. Reads what [method _score] reads, so a worker
 ## may run it when [method is_thread_safe] says so.
-func scores_for(observer: DotNetIdentity, entities: Array, context: Dictionary) -> Dictionary:
+func scores_for(observer: GSNetIdentity, entities: Array, context: Dictionary) -> Dictionary:
 	var out := {}
-	for identity: DotNetIdentity in entities:
+	for identity: GSNetIdentity in entities:
 		out[identity.net_id] = _score(observer, identity, context)
 	return out
 
 
 func _rank_into(
 	out: Array,
-	observer: DotNetIdentity,
+	observer: GSNetIdentity,
 	entities: Array,
 	limit: int,
 	context: Dictionary,
@@ -420,7 +420,7 @@ func _rank_into(
 	keys.resize(entities.size())
 	var given := not scores.is_empty()
 	for i in entities.size():
-		var identity: DotNetIdentity = entities[i]
+		var identity: GSNetIdentity = entities[i]
 		var score: float = float(scores[identity.net_id]) if given else _score(observer, identity, context)
 		keys[i] = Vector2(-1e9 if identity.always_relevant else -score, i)
 	keys.sort()
@@ -451,13 +451,13 @@ func _note_cap(peer_id: int, count: int, limit: int, context: Dictionary) -> voi
 			"dropped": count - limit, "strategy": strategy_name,
 		}
 		if state["warned"]:
-			DotLog.debug(CHANNEL, "the entity cap is cutting a peer's view again", fields)
+			GSLog.debug(CHANNEL, "the entity cap is cutting a peer's view again", fields)
 		else:
 			state["warned"] = true
-			DotLog.warn(CHANNEL, "the entity cap is cutting entities a peer should see", fields)
+			GSLog.warn(CHANNEL, "the entity cap is cutting entities a peer should see", fields)
 	elif state["capped"] and count * 10 <= limit * 9:
 		state["capped"] = false
-		DotLog.debug(CHANNEL, "a peer's view fits under the entity cap again", {
+		GSLog.debug(CHANNEL, "a peer's view fits under the entity cap again", {
 			"peer": peer_id, "relevant": count, "cap": limit,
 			"ticks": tick - int(state.get("since_tick", tick)),
 		})
@@ -465,7 +465,7 @@ func _note_cap(peer_id: int, count: int, limit: int, context: Dictionary) -> voi
 	_cap_state[peer_id] = state
 
 
-static func _find(all: Array[DotNetIdentity], net_id: int) -> DotNetIdentity:
+static func _find(all: Array[GSNetIdentity], net_id: int) -> GSNetIdentity:
 	for identity in all:
 		if identity.net_id == net_id:
 			return identity
@@ -475,7 +475,7 @@ static func _find(all: Array[DotNetIdentity], net_id: int) -> DotNetIdentity:
 ## Indexes [param all] by net id for the snapshot about to be asked about it, so a lingering
 ## entity is reached by lookup, not by a walk of every identity per peer. Main thread, once per
 ## snapshot; [code]index_snapshot([])[/code] after it.
-func index_snapshot(all: Array[DotNetIdentity]) -> void:
+func index_snapshot(all: Array[GSNetIdentity]) -> void:
 	_indexed = all
 	_by_id = {}
 	_packed_ok = false
@@ -501,13 +501,13 @@ func index_snapshot(all: Array[DotNetIdentity]) -> void:
 	_packed_ok = frozen and use_packed
 
 
-func _find_in(all: Array[DotNetIdentity], net_id: int) -> DotNetIdentity:
+func _find_in(all: Array[GSNetIdentity], net_id: int) -> GSNetIdentity:
 	if is_same(all, _indexed):
 		return _by_id.get(net_id)
 	return _find(all, net_id)
 
 
-var _indexed: Array[DotNetIdentity] = []
+var _indexed: Array[GSNetIdentity] = []
 
 ## Switch for the packed per-snapshot copies below (A/B benches and parity checks turn it off).
 static var use_packed: bool = true
@@ -524,7 +524,7 @@ var _by_id: Dictionary = {}
 
 ## [method _pinned] and [method _resolve_into] in one pass over [param all], with no copy of the ids.
 func _resolve_pinned_into(
-	out: Array, ids: Dictionary, observer: DotNetIdentity, all: Array[DotNetIdentity]
+	out: Array, ids: Dictionary, observer: GSNetIdentity, all: Array[GSNetIdentity]
 ) -> void:
 	var owner := observer.owner_peer_id if observer != null else -1
 	for identity in all:
@@ -533,13 +533,13 @@ func _resolve_pinned_into(
 			out.append(identity)
 
 
-func _resolve(ids: Dictionary, all: Array[DotNetIdentity]) -> Array[DotNetIdentity]:
-	var out: Array[DotNetIdentity] = []
+func _resolve(ids: Dictionary, all: Array[GSNetIdentity]) -> Array[GSNetIdentity]:
+	var out: Array[GSNetIdentity] = []
 	_resolve_into(out, ids, all)
 	return out
 
 
-func _resolve_into(out: Array, ids: Dictionary, all: Array[DotNetIdentity]) -> void:
+func _resolve_into(out: Array, ids: Dictionary, all: Array[GSNetIdentity]) -> void:
 	for identity in all:
 		if ids.has(identity.net_id):
 			out.append(identity)

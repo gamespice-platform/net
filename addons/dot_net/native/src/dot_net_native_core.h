@@ -39,7 +39,7 @@ struct Val {
 	std::shared_ptr<const godot::Variant> ext;
 };
 
-// One DotNetVar, as DotNetBehaviour._native_spec describes it.
+// One GSNetVar, as GSNetBehaviour._native_spec describes it.
 struct Decl {
 	int type = 0;
 	int audience = 0;
@@ -103,7 +103,7 @@ struct IdRec {
 	bool shared = false;
 	uint64_t seen = 0;
 	std::vector<BehRec *> behaviours;
-	// Read only when native interest is on (DotNetNativeCore::set_interest).
+	// Read only when native interest is on (GSNetNativeCore::set_interest).
 	double priority = 1.0;
 	bool always = false;
 	double linger_sec = 2.0;
@@ -115,7 +115,7 @@ struct IdRec {
 	double far_dist = 0.0;
 };
 
-// DotNetInterest's per-peer cache and lingering set, in the order the GDScript dictionaries keep them.
+// GSNetInterest's per-peer cache and lingering set, in the order the GDScript dictionaries keep them.
 struct PeerInterest {
 	bool has = false;
 	int64_t at_ms = 0;
@@ -124,8 +124,8 @@ struct PeerInterest {
 	std::vector<std::pair<int64_t, int64_t>> linger;
 };
 
-// DotNetVisibility, copied when its serial changes: the map's BSP tree (planes, nodes, leaf clusters) and a
-// decoded PVS bit row per cluster. cluster_of and sees are DotNetVisibility.cluster_of and cluster_sees.
+// GSNetVisibility, copied when its serial changes: the map's BSP tree (planes, nodes, leaf clusters) and a
+// decoded PVS bit row per cluster. cluster_of and sees are GSNetVisibility.cluster_of and cluster_sees.
 struct VisTree {
 	int64_t serial = 0;
 	std::vector<float> planes;
@@ -176,7 +176,7 @@ struct InterestCfg {
 	std::vector<std::pair<godot::String, double>> far_by_tag;
 	bool far_coherent = false;
 	int64_t far_tiers = 1;
-	// cos of DotNetInterest.aim_cone_deg; 1 is off.
+	// cos of GSNetInterest.aim_cone_deg; 1 is off.
 	double aim_cos = 1.0;
 	int64_t ticks_per_snapshot = 1;
 	int64_t cap = 0;
@@ -195,7 +195,7 @@ struct Entry {
 	std::shared_ptr<Reads> reads;
 };
 
-// DotNetBehaviour.PeerView, with properties as slots and dictionaries as bitmasks.
+// GSNetBehaviour.PeerView, with properties as slots and dictionaries as bitmasks.
 struct View {
 	uint64_t acked_has = 0;
 	uint64_t believed_has = 0;
@@ -220,7 +220,7 @@ struct View {
 	}
 };
 
-// A peer's DotNetBudget.PeerBudget accumulators and starved_ticks, held here between snapshots of the
+// A peer's GSNetBudget.PeerBudget accumulators and starved_ticks, held here between snapshots of the
 // native-interest path so the build threads read and write plain numbers instead of Godot Dictionaries.
 // Each key keeps its first insertion's place, as a Dictionary does, so export() rebuilds the same
 // dictionaries the GDScript path would hold. A key read but never set is not exported (Dictionary.get).
@@ -293,7 +293,7 @@ struct Job {
 	Peer *peer = nullptr;
 	std::vector<IdRec *> relevant;
 	int64_t acked_tick = 0;
-	// DotNetManager.acked_ring: tick t acked when acked_ring[t % size] == t; empty = none.
+	// GSNetManager.acked_ring: tick t acked when acked_ring[t % size] == t; empty = none.
 	std::vector<int64_t> acked_ring;
 	bool strict = false;
 	bool compact = false;
@@ -305,12 +305,12 @@ struct Job {
 	godot::Dictionary starved_ticks;
 	// The peer's BudgetStore, which replaces the two dictionaries (native interest only), or null.
 	BudgetStore *store = nullptr;
-	// Native interest: the build ranks its own candidates (see DotNetNativeCore::_interest_job).
+	// Native interest: the build ranks its own candidates (see GSNetNativeCore::_interest_job).
 	bool interest = false;
 	bool has_observer = false;
 	godot::Vector3 obs_pos;
 	int64_t obs_owner = -1;
-	// The observer's DotNetIdentity.interest_aim (unit, or zero for none).
+	// The observer's GSNetIdentity.interest_aim (unit, or zero for none).
 	godot::Vector3 obs_aim;
 	int64_t cap_count = 0;
 	// Out.
@@ -325,7 +325,7 @@ struct Job {
 	int64_t oversize_id = -1;
 	int64_t oversize_bytes = 0;
 	int64_t usec = 0;
-	// Built: set under DotNetNativeCore::_mutex once the payloads above are final.
+	// Built: set under GSNetNativeCore::_mutex once the payloads above are final.
 	bool done = false;
 };
 
@@ -333,11 +333,11 @@ struct Job {
 
 namespace godot {
 
-/// The per-peer half of DotNetManager's snapshot send, in C++: what each peer is believed to hold,
+/// The per-peer half of GSNetManager's snapshot send, in C++: what each peer is believed to hold,
 /// what is dirty for it, and its snapshot parts, bit for bit what the GDScript path builds.
-/// One per manager; it keeps no global state. Server side only: DotNetNative loads it.
-class DotNetNativeCore : public RefCounted {
-	GDCLASS(DotNetNativeCore, RefCounted)
+/// One per manager; it keeps no global state. Server side only: GSNetNative loads it.
+class GSNetNativeCore : public RefCounted {
+	GDCLASS(GSNetNativeCore, RefCounted)
 
 	std::unordered_map<uint64_t, std::unique_ptr<dotnet::BehRec>> _behaviours;
 	std::vector<dotnet::BehRec *> _by_index;
@@ -377,7 +377,7 @@ class DotNetNativeCore : public RefCounted {
 	int64_t _snapshots = 0;
 	int64_t _custom_reads = 0;
 	int64_t _unknown_relevant = 0;
-	// How a behaviour's values are read (begin_snapshot params[6], DotNetConfig.native_reads):
+	// How a behaviour's values are read (begin_snapshot params[6], GSNetConfig.native_reads):
 	// 0 calls GDScript's _native_values per behaviour, 1 reads the properties directly, 2 does both and
 	// compares (a mismatch counts, logs once and sends GDScript's values).
 	int _read_mode = 1;
@@ -418,8 +418,8 @@ protected:
 	static void _bind_methods();
 
 public:
-	DotNetNativeCore();
-	~DotNetNativeCore();
+	GSNetNativeCore();
+	~GSNetNativeCore();
 
 	/// Bumped whenever the GDScript side must change with the library.
 	static int64_t abi_version();
@@ -429,14 +429,14 @@ public:
 	void begin_snapshot(const Array &identities, const PackedInt64Array &params);
 	/// Queues one peer's build. [param info]: peer_id, acked_tick, strict, compact, remaining bytes,
 	/// send_lead, lead.x, lead.y, then the acked ring (ABI 4): its size n and n ticks
-	/// (DotNetManager.acked_ring). The budget dictionaries are the peer's own and are written by the build.
+	/// (GSNetManager.acked_ring). The budget dictionaries are the peer's own and are written by the build.
 	void submit_peer(const Array &relevant, const PackedInt64Array &info, const Dictionary &accumulators, const Dictionary &starved_ticks);
-	/// Native interest (off unless [param cfg] has on = true): DotNetInterestDistance's relevance, thinning,
+	/// Native interest (off unless [param cfg] has on = true): GSNetInterestDistance's relevance, thinning,
 	/// scores, entity cap and the budget's accumulator order, run by the build itself. Call before begin_snapshot.
 	void set_interest(const Dictionary &cfg);
-	/// Whether set_interest reads a "vis" tree (DotNetVisibility.native_dict). Its presence is the check.
+	/// Whether set_interest reads a "vis" tree (GSNetVisibility.native_dict). Its presence is the check.
 	static bool visibility_supported();
-	/// Marks every peer's cached relevance as old (what a test does to DotNetInterest._cache's at_ms).
+	/// Marks every peer's cached relevance as old (what a test does to GSNetInterest._cache's at_ms).
 	void expire_interest();
 	/// submit_peer for a peer whose candidates the library works out: [param observer] is its entity or null,
 	/// [param info] as submit_peer's with a load flag
@@ -461,11 +461,11 @@ public:
 	void forget_peer(int64_t peer_id);
 	/// Forgets one behaviour's record of one peer (-1: every peer).
 	void forget_view(Object *behaviour, int64_t peer_id);
-	/// DotNetBehaviour.PeerView.snapshot()'s fields for the native record, or {} when there is none.
+	/// GSNetBehaviour.PeerView.snapshot()'s fields for the native record, or {} when there is none.
 	Dictionary view_snapshot(Object *behaviour, int64_t peer_id);
 	Dictionary view_state(Object *behaviour, int64_t peer_id);
-	/// The bits DotNetVar.write writes for [param value], begun [param pad] zero bits into a byte:
-	/// [bytes, bits]. [param spec] is one declaration from DotNetBehaviour._native_spec.
+	/// The bits GSNetVar.write writes for [param value], begun [param pad] zero bits into a byte:
+	/// [bytes, bits]. [param spec] is one declaration from GSNetBehaviour._native_spec.
 	Array encode_value(const PackedFloat64Array &spec, const Variant &value, int64_t pad);
 	Dictionary describe();
 };

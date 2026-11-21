@@ -10,7 +10,7 @@ const CHECKS := 644
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.WARN)
+	GSLog.set_level(GSLog.Level.WARN)
 	_rng.seed = 12345
 	await _run()
 
@@ -87,6 +87,6 @@ func _run() -> void:
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
 
-	if DotPlatform.is_headless():
+	if GSPlatform.is_headless():
 		await get_tree().process_frame
 		get_tree().quit(1 if _failed > 0 else 0)

@@ -7,13 +7,13 @@ func _latency_pair() -> Dictionary:
 	var guest := _parts_manager("LatencyClient", false, 1200)
 	var got := {"up": [], "down": []}
 	for m in [host, guest]:
-		var manager := m as DotNetManager
+		var manager := m as GSNetManager
 		manager.messages.register(&"demo.chat", ChatMessage)
 		manager.messages.register(
-			&"demo.notice", ServerNotice, DotNetMessage.Delivery.RELIABLE, DotNetMessage.Direction.TO_CLIENT
+			&"demo.notice", ServerNotice, GSNetMessage.Delivery.RELIABLE, GSNetMessage.Direction.TO_CLIENT
 		)
-	host.messages.on(&"demo.chat", func(_m: DotNetMessage) -> void: (got["up"] as Array).append(got["t"]))
-	guest.messages.on(&"demo.notice", func(_m: DotNetMessage) -> void: (got["down"] as Array).append(got["t"]))
+	host.messages.on(&"demo.chat", func(_m: GSNetMessage) -> void: (got["up"] as Array).append(got["t"]))
+	guest.messages.on(&"demo.notice", func(_m: GSNetMessage) -> void: (got["down"] as Array).append(got["t"]))
 	got["t"] = 0.0
 	host.send_fn = func(_peer: int, payload: PackedByteArray, _d: int) -> void:
 		var _r := guest.receive(payload, 1)
@@ -24,8 +24,8 @@ func _latency_pair() -> Dictionary:
 
 ## Sends one message each way and steps the client for [param seconds]; returns the first delivery time each way, or -1.
 func _latency_run(pair: Dictionary, seconds: float) -> Array[float]:
-	var host := pair["host"] as DotNetManager
-	var guest := pair["guest"] as DotNetManager
+	var host := pair["host"] as GSNetManager
+	var guest := pair["guest"] as GSNetManager
 	var got := pair["got"] as Dictionary
 	(got["up"] as Array).clear()
 	(got["down"] as Array).clear()
@@ -52,10 +52,10 @@ func _test_latency_baseline() -> void:
 	print("[client latency baseline]")
 
 	var pair := _latency_pair()
-	var guest := pair["guest"] as DotNetManager
+	var guest := pair["guest"] as GSNetManager
 	var latency := guest.latency
 	guest.start()
-	(pair["host"] as DotNetManager).start()
+	(pair["host"] as GSNetManager).start()
 
 	_check("idle by default: not delaying, not busy", not latency.delaying() and not latency.busy())
 	var base := _latency_run(pair, 0.5)
@@ -95,7 +95,7 @@ func _interpolation_notifies() -> void:
 	# Everything above checks that a smooth value is computed; this checks that anything is told
 	# about it. Without the notification a game copies state only on a snapshot, so a remote
 	# moves in 20 Hz steps and the interpolator's output is discarded.
-	var config2 := DotNetConfig.new()
+	var config2 := GSNetConfig.new()
 	config2.adaptive_interpolation = false
 	config2.interpolation_buffer = 2.0
 
@@ -107,15 +107,15 @@ func _interpolation_notifies() -> void:
 	add_child(host)
 	host.add_child(watcher)
 
-	var watched := DotNetIdentity.new()
+	var watched := GSNetIdentity.new()
 	watched.name = "Identity"
 	watched.owner_peer_id = 5
 	host.add_child(watched)
 
-	var registry := DotNetRegistry.new(false, 1)
+	var registry := GSNetRegistry.new(false, 1)
 	registry.register(watched, 77, 0, config2)
 
-	var live := DotNetInterpolator.new(config2)
+	var live := GSNetInterpolator.new(config2)
 	live.push(77, 100, {"position": Vector3(0, 0, 0)})
 	live.push(77, 110, {"position": Vector3(10, 0, 0)})
 
@@ -133,7 +133,7 @@ func _interpolation_notifies() -> void:
 
 	# A predicted entity must not be notified: writing interpolated state over a
 	# prediction fights the predictor every frame.
-	watched.authority = DotNetIdentity.Authority.SHARED
+	watched.authority = GSNetIdentity.Authority.SHARED
 	watched.is_owner = true
 	watched.is_authoritative = false
 	var before_predicted := watcher.notifications
@@ -145,12 +145,12 @@ func _interpolation_notifies() -> void:
 
 
 func _interpolation_settled_skip() -> void:
-	# DotNetConfig.skip_settled_interp: a draw equal to last frame's is not written again, until a snapshot
+	# GSNetConfig.skip_settled_interp: a draw equal to last frame's is not written again, until a snapshot
 	# arrives or a frame is missed. Off, every frame writes, as before.
-	var was_native := DotNetInterpolator.native_enabled
-	DotNetInterpolator.native_enabled = false
+	var was_native := GSNetInterpolator.native_enabled
+	GSNetInterpolator.native_enabled = false
 	for skip: bool in [false, true]:
-		var config := DotNetConfig.new()
+		var config := GSNetConfig.new()
 		config.adaptive_interpolation = false
 		config.interpolation_buffer = 2.0
 		config.skip_settled_interp = skip
@@ -160,15 +160,15 @@ func _interpolation_settled_skip() -> void:
 		host.name = "Settled%s" % skip
 		add_child(host)
 		host.add_child(watcher)
-		var watched := DotNetIdentity.new()
+		var watched := GSNetIdentity.new()
 		watched.name = "Identity"
 		watched.owner_peer_id = 5
 		host.add_child(watched)
-		DotNetRegistry.new(false, 1).register(watched, 78, 0, config)
-		var live := DotNetInterpolator.new(config)
+		GSNetRegistry.new(false, 1).register(watched, 78, 0, config)
+		var live := GSNetInterpolator.new(config)
 		live.push(78, 100, {"position": Vector3(3, 0, 0)})
 		live.push(78, 110, {"position": Vector3(3, 0, 0)})
-		var frame: Array[DotNetIdentity] = [watched]
+		var frame: Array[GSNetIdentity] = [watched]
 		live.apply_frame(frame, 107.0)
 		live.apply_frame(frame, 108.0)
 		live.apply_frame(frame, 109.0)
@@ -188,10 +188,10 @@ func _interpolation_settled_skip() -> void:
 		live.apply(watched, 133.0)
 		_check("settled skip %s: apply always writes" % skip, watcher.position != Vector3(9, 9, 9))
 		host.queue_free()
-	DotNetInterpolator.native_enabled = was_native
+	GSNetInterpolator.native_enabled = was_native
 
 
-func _interpolation_value_at(interpolator: DotNetInterpolator) -> void:
+func _interpolation_value_at(interpolator: GSNetInterpolator) -> void:
 	# value_at: the drawn value at an absolute render tick, counting nothing, never extrapolating.
 	var counted := interpolator.sample_count()
 	var at: Variant = interpolator.value_at(1, &"position", 102.5)
@@ -217,25 +217,25 @@ func _interpolation_value_at(interpolator: DotNetInterpolator) -> void:
 	_check("and is null for a sample the track does not have", interpolator.value_between(4, &"position", 103, 106, 105.0) == null)
 	_check("value_between with a cut is null across a teleport inside the bracket", interpolator.value_between(4, &"position", 102, 104, 103.0, 10.0) == null)
 	_check("and ignores a teleport after the bracket, as the server's rewind cannot know it", interpolator.value_between(4, &"position", 100, 102, 101.0, 10.0) == Vector3(0.25, 0, 0))
-	var wire_spec := DotNetVar.make(&"position", DotNetVar.Type.VECTOR3_POSITION)
+	var wire_spec := GSNetVar.make(&"position", GSNetVar.Type.VECTOR3_POSITION)
 	var on_wire: Vector3 = wire_spec.wire_value(Vector3(1.2345, -0.004, 7.0))
-	var round_trip := DotNetWriter.new()
+	var round_trip := GSNetWriter.new()
 	wire_spec.write(round_trip, Vector3(1.2345, -0.004, 7.0))
-	_check("wire_value is the value a receiver reads, to the bit", on_wire == wire_spec.read(DotNetReader.new(round_trip.to_bytes())) and on_wire != Vector3(1.2345, -0.004, 7.0))
+	_check("wire_value is the value a receiver reads, to the bit", on_wire == wire_spec.read(GSNetReader.new(round_trip.to_bytes())) and on_wire != Vector3(1.2345, -0.004, 7.0))
 	_check("wire_value snaps every range kind to exactly what the wire reads back", _wire_value_parity())
 
 
 ## wire_value snaps the range kinds without buffers; it must agree with a real write and read to
 ## the bit, in range, out of range, on the edges and at odd widths.
 func _wire_value_parity() -> bool:
-	var specs: Array[DotNetVar] = [
-		DotNetVar.make(&"p", DotNetVar.Type.VECTOR3_POSITION),
-		DotNetVar.make(&"v", DotNetVar.Type.VECTOR3_VELOCITY),
-		DotNetVar.make(&"r", DotNetVar.Type.VECTOR3_RANGE).range_of(-3.0, 5.5).bits(11),
-		DotNetVar.make(&"f", DotNetVar.Type.FLOAT_RANGE).range_of(0.0, 100.0).bits(7),
-		DotNetVar.make(&"g", DotNetVar.Type.FLOAT_RANGE).range_of(-1.0, 1.0).bits(1),
-		DotNetVar.make(&"h", DotNetVar.Type.FLOAT_RANGE).range_of(-2.0, 2.0).bits(40),
-		DotNetVar.make(&"b", DotNetVar.Type.BOOL),
+	var specs: Array[GSNetVar] = [
+		GSNetVar.make(&"p", GSNetVar.Type.VECTOR3_POSITION),
+		GSNetVar.make(&"v", GSNetVar.Type.VECTOR3_VELOCITY),
+		GSNetVar.make(&"r", GSNetVar.Type.VECTOR3_RANGE).range_of(-3.0, 5.5).bits(11),
+		GSNetVar.make(&"f", GSNetVar.Type.FLOAT_RANGE).range_of(0.0, 100.0).bits(7),
+		GSNetVar.make(&"g", GSNetVar.Type.FLOAT_RANGE).range_of(-1.0, 1.0).bits(1),
+		GSNetVar.make(&"h", GSNetVar.Type.FLOAT_RANGE).range_of(-2.0, 2.0).bits(40),
+		GSNetVar.make(&"b", GSNetVar.Type.BOOL),
 	]
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 715
@@ -244,15 +244,15 @@ func _wire_value_parity() -> bool:
 			var scale := 10.0 if i < 200 else 3000.0
 			var value: Variant
 			match spec.type:
-				DotNetVar.Type.FLOAT_RANGE:
+				GSNetVar.Type.FLOAT_RANGE:
 					value = rng.randf_range(-scale, scale) if i > 3 else [0.0, 100.0, -1.0, 2.0][i]
-				DotNetVar.Type.BOOL:
+				GSNetVar.Type.BOOL:
 					value = i % 2 == 0
 				_:
 					value = Vector3(rng.randf_range(-scale, scale), rng.randf_range(-scale, scale), rng.randf_range(-scale, scale))
-			var writer := DotNetWriter.new()
+			var writer := GSNetWriter.new()
 			spec.write(writer, value)
-			var expected: Variant = spec.read(DotNetReader.new(writer.to_bytes()))
+			var expected: Variant = spec.read(GSNetReader.new(writer.to_bytes()))
 			var got: Variant = spec.wire_value(value)
 			if typeof(got) != typeof(expected) or got != expected:
 				push_error("wire_value parity: %s %s -> %s, wire reads %s" % [spec.property, value, got, expected])
@@ -265,11 +265,11 @@ func _test_interpolation() -> void:
 	print("")
 	print("[interpolation]")
 
-	var config := DotNetConfig.new()
+	var config := GSNetConfig.new()
 	config.adaptive_interpolation = false
 	config.interpolation_buffer = 2.0
 
-	var interpolator := DotNetInterpolator.new(config)
+	var interpolator := GSNetInterpolator.new(config)
 
 	interpolator.push(1, 100, {"position": Vector3(0, 0, 0)})
 	interpolator.push(1, 110, {"position": Vector3(10, 0, 0)})
@@ -326,7 +326,7 @@ func _test_interpolation() -> void:
 	_check_render_timeline()
 
 	# Adaptive buffering must grow under jitter.
-	var adaptive := DotNetInterpolator.new(DotNetConfig.new())
+	var adaptive := GSNetInterpolator.new(GSNetConfig.new())
 	var initial := adaptive.delay_ticks()
 	for i in range(40):
 		adaptive.note_arrival()
@@ -372,7 +372,7 @@ func _test_dropped_time() -> void:
 	# The floor, on its own: a clock steered by the reports that finds itself behind the server
 	# (a stall it never saw) catches up at once. Armed: the reported lead's path returned without
 	# looking and the clock stayed 30 ticks behind, every command late.
-	var behind := DotNetClock.new(60)
+	var behind := GSNetClock.new(60)
 	behind.follow_engine_time = false
 	behind.sync_from_server(1000, 100.0)
 	for _i in 3:
@@ -394,7 +394,7 @@ func _test_dropped_time() -> void:
 			int(calm["lost_ms"]), int(calm["floors"])],
 		int(calm["lost_ms"]) == 0 and int(calm["floors"]) == 0)
 	# Not exactly the same clock any more: following the wall also discounts a frame longer than
-	# the last second has seen (DotNetClock._discount_long_frame), which these random frames
+	# the last second has seen (GSNetClock._discount_long_frame), which these random frames
 	# have now and then. Never a worse one.
 	_check("and the clock does no worse than when handed only the steps (%d late, %d)" % [
 			int(calm["late"]), int(calm_blind["late"])],
@@ -409,14 +409,14 @@ func _test_dropped_time() -> void:
 		int(polled["late"]) * 50 <= int(polled["ticks"]) and int(polled["snaps"]) == 0)
 
 
-## The optional native core ([DotNetNative]) against the GDScript path: each encoder bit for bit
+## The optional native core ([GSNetNative]) against the GDScript path: each encoder bit for bit
 ## at every pad, and whole scripted games byte for byte, inline and on workers. Without the
 ## library built every check reads as the fallback's: GDScript sends, and says why.
 func _test_native() -> void:
 	print("")
 	print("[native]")
-	var loaded := DotNetNative.load_library().ok
-	print("  native library: %s" % ("loaded" if loaded else DotNetNative.describe()["reason"]))
+	var loaded := GSNetNative.load_library().ok
+	print("  native library: %s" % ("loaded" if loaded else GSNetNative.describe()["reason"]))
 
 	_native_encoders_match(loaded)
 	_native_encode_shortcuts()
@@ -448,12 +448,12 @@ func _native_runs_match(loaded: bool) -> void:
 
 
 func _native_reads_match(loaded: bool) -> void:
-	# Reads in the library (DotNetConfig.native_reads): 1 reads each behaviour's values and its
+	# Reads in the library (GSNetConfig.native_reads): 1 reads each behaviour's values and its
 	# identity's frozen position without a GDScript call per behaviour, 0 is the GDScript
 	# fallback, 2 does both and counts every difference. All three send the same bytes.
 	# "computed" overrides _net_read_property, so the library reads it through GDScript in every mode.
 	var direct: Array[bool] = []
-	for probe: DotNetBehaviour in [Computed.new(), Counted.new(), Coded.new()]:
+	for probe: GSNetBehaviour in [Computed.new(), Counted.new(), Coded.new()]:
 		direct.append(probe._native_direct_reads())
 		probe.free()
 	_check("native reads: a behaviour overriding a read hook is read through GDScript, a plain one directly %s" % [direct],
@@ -478,7 +478,7 @@ func _native_reads_match(loaded: bool) -> void:
 
 
 func _native_interest_match(loaded: bool) -> void:
-	# Interest in the library too (DotNetConfig.native_interest): the same entities chosen, ranked and
+	# Interest in the library too (GSNetConfig.native_interest): the same entities chosen, ranked and
 	# thinned for every peer (a payload carries exactly the chosen entities, in order), the same budgets.
 	# "held" reads the budgets every tenth tick only, so the library keeps them across ticks between.
 	for variant: String in ["", "coded", "thin", "cache", "held"]:
@@ -517,7 +517,7 @@ func _native_library_for_platform() -> void:
 	probe.set_value("libraries", "never.x86_64", "bin/a.so")
 	probe.set_value("libraries", "%s.x86_64" % OS.get_name().to_lower(), "bin/missing.so")
 	probe.save(cfg)
-	var found := DotNetNative._library_for_platform(cfg)
+	var found := GSNetNative._library_for_platform(cfg)
 	_check("native: a .cfg's library for this platform is found before loading it (%s)" % found,
 		not OS.has_feature("x86_64") or found == cfg.get_base_dir().path_join("bin/missing.so"))
 	DirAccess.remove_absolute(cfg)

@@ -31,7 +31,7 @@ func _ready() -> void:
 ## [param spikes] the share of client frames that take 100 ms.
 func _run(label: String, frame: float, jitter: float, cost: float, spikes: float) -> void:
 	seed(7)
-	var clock := DotNetClock.new(RATE)
+	var clock := GSNetClock.new(RATE)
 	clock.follow_engine_time = false
 	var wall := 0.0
 	var acc := 0.0

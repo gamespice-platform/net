@@ -1,4 +1,4 @@
-class_name DotNetWriter
+class_name GSNetWriter
 extends RefCounted
 
 ## Bit-level writer with quantisation. The bottom of the wire format. [b]Why bits rather than
@@ -28,7 +28,7 @@ func _init(reserve_bytes: int = 256) -> void:
 ## and bytes fill in order.
 func write_bits(value: int, bits: int) -> void:
 	if bits <= 0 or bits > 64:
-		push_error("DotNetWriter.write_bits: bits must be 1..64, got %d" % bits)
+		push_error("GSNetWriter.write_bits: bits must be 1..64, got %d" % bits)
 		return
 
 	var remaining := bits
@@ -82,7 +82,7 @@ func write_int(value: int, bits: int = 32) -> void:
 func write_varint(value: int) -> void:
 	var v := value
 	if v < 0:
-		push_error("DotNetWriter.write_varint: negative value; use write_svarint")
+		push_error("GSNetWriter.write_varint: negative value; use write_svarint")
 		v = 0
 
 	while true:
@@ -105,7 +105,7 @@ func write_svarint(value: int) -> void:
 ## teleports.
 func write_float_range(value: float, min_value: float, max_value: float, bits: int) -> void:
 	if max_value <= min_value:
-		push_error("DotNetWriter.write_float_range: max must exceed min")
+		push_error("GSNetWriter.write_float_range: max must exceed min")
 		write_bits(0, bits)
 		return
 
@@ -288,14 +288,14 @@ func write_bit_run(data: PackedByteArray, from_bit: int, to_bit: int) -> void:
 		return
 
 	if (from_bit & 7) != (_bit_pos & 7):
-		push_error("DotNetWriter.write_bit_run: source at bit %d of its byte, this writer at %d"
+		push_error("GSNetWriter.write_bit_run: source at bit %d of its byte, this writer at %d"
 			% [from_bit & 7, _bit_pos & 7])
 		return
 
 	var last := (to_bit + 7) >> 3
 
 	if data.size() < last:
-		push_error("DotNetWriter.write_bit_run: bits to %d from %d bytes" % [to_bit, data.size()])
+		push_error("GSNetWriter.write_bit_run: bits to %d from %d bytes" % [to_bit, data.size()])
 		return
 
 	var end_bit := _bit_pos + bits
@@ -328,7 +328,7 @@ func write_shifted_run(data: PackedByteArray, bits: int) -> void:
 	var needed := (bits + 7) >> 3
 
 	if data.size() < needed:
-		push_error("DotNetWriter.write_shifted_run: %d bits from %d bytes" % [bits, data.size()])
+		push_error("GSNetWriter.write_shifted_run: %d bits from %d bytes" % [bits, data.size()])
 		return
 
 	var end_bit := _bit_pos + bits
@@ -398,5 +398,5 @@ func reset() -> void:
 
 
 ## A reader positioned at the start of what was written. For round-trip tests.
-func to_reader() -> DotNetReader:
-	return DotNetReader.new(to_bytes())
+func to_reader() -> GSNetReader:
+	return GSNetReader.new(to_bytes())

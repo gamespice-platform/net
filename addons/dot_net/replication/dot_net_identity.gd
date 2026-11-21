@@ -1,5 +1,5 @@
 @tool
-class_name DotNetIdentity
+class_name GSNetIdentity
 extends Node
 
 ## Makes the node it is attached to a networked entity. Add one as a child of anything that needs to
@@ -43,7 +43,7 @@ signal became_owner()
 ## which properties they receive, and whether the local machine predicts it.
 @export var owner_peer_id: int = 0
 
-## Prefab id used to recreate this on clients. See [DotNetSpawner].
+## Prefab id used to recreate this on clients. See [GSNetSpawner].
 @export var prefab_id: StringName = &""
 
 @export var authority: Authority = Authority.SERVER
@@ -52,7 +52,7 @@ signal became_owner()
 
 ## The node this identity represents. Defaults to the parent. Behaviours read and write properties on
 ## it, and interest management reads its position from it.
-@export var entity_ref: DotNodeRef = null
+@export var entity_ref: GSNodeRef = null
 
 @export_group("Replication")
 
@@ -60,13 +60,13 @@ signal became_owner()
 ## an objective marker, a boss, the level geometry's moving parts.
 @export var always_relevant: bool = false
 
-## Interest tags, for strategies that filter by category. A [DotNetInterest] implementation can use
+## Interest tags, for strategies that filter by category. A [GSNetInterest] implementation can use
 ## these to answer questions distance cannot: "replicate entities on my team wherever they are", "never
 ## replicate props to spectators".
 @export var interest_tags: PackedStringArray = PackedStringArray()
 
 ## Where this identity looks, as a unit vector, when it observes: inside
-## [member DotNetInterest.aim_cone_deg] of it, far entities keep the first band's rate. The game
+## [member GSNetInterest.aim_cone_deg] of it, far entities keep the first band's rate. The game
 ## sets it on its observers each tick (a player's view); zero is no aim.
 var interest_aim: Vector3 = Vector3.ZERO
 
@@ -82,7 +82,7 @@ var interest_aim: Vector3 = Vector3.ZERO
 var entity: Node = null
 
 ## Behaviours found under this identity.
-var behaviours: Array[DotNetBehaviour] = []
+var behaviours: Array[GSNetBehaviour] = []
 
 ## Whether this process has authority over this entity. Set by the manager at registration.
 var is_authoritative: bool = false
@@ -101,14 +101,14 @@ func _ready() -> void:
 		return
 
 	if entity_ref == null:
-		entity_ref = DotNodeRef.new()
-		entity_ref.mode = DotNodeRef.Mode.PARENT
+		entity_ref = GSNodeRef.new()
+		entity_ref.mode = GSNodeRef.Mode.PARENT
 
 	var resolved := entity_ref.resolve(self)
 	if resolved.ok:
 		entity = resolved.value
 	else:
-		DotLog.warn(
+		GSLog.warn(
 			CHANNEL,
 			"could not resolve the entity node; falling back to the parent",
 			{"ref": entity_ref.describe()}
@@ -135,20 +135,20 @@ func _collect_behaviours() -> void:
 const _MAX_BEHAVIOURS := 63
 
 
-## Walks the subtree, stopping at nested identities. A child entity with its own [DotNetIdentity] owns
+## Walks the subtree, stopping at nested identities. A child entity with its own [GSNetIdentity] owns
 ## its own behaviours; claiming them here would replicate them twice and under the wrong id.
 func _collect_from(node: Node) -> void:
 	for child in node.get_children():
-		if child is DotNetIdentity and child != self:
+		if child is GSNetIdentity and child != self:
 			continue
 
-		if child is DotNetBehaviour:
-			# The count travels in 6 bits (DotNetManager's snapshot entity header) and the
+		if child is GSNetBehaviour:
+			# The count travels in 6 bits (GSNetManager's snapshot entity header) and the
 			# writer masks silently: a 64th behaviour would be sent as a count of 0.
 			if behaviours.size() >= _MAX_BEHAVIOURS:
 				push_error("%s: behaviour %s refused, an entity carries at most %d (6-bit count)." % [name, child.name, _MAX_BEHAVIOURS])
 			else:
-				behaviours.append(child as DotNetBehaviour)
+				behaviours.append(child as GSNetBehaviour)
 
 		_collect_from(child)
 
@@ -169,7 +169,7 @@ func _on_registered(assigned_id: int, tick: int, authoritative: bool, local_peer
 	if is_owner:
 		became_owner.emit()
 
-	DotLog.debug(
+	GSLog.debug(
 		CHANNEL,
 		"entity registered",
 		{
@@ -216,7 +216,7 @@ func set_owner_peer(new_peer_id: int, local_peer: int) -> void:
 	if is_owner:
 		became_owner.emit()
 
-	DotLog.debug(
+	GSLog.debug(
 		CHANNEL,
 		"ownership changed",
 		{"net_id": net_id, "from": previous, "to": new_peer_id}
@@ -316,4 +316,4 @@ func describe() -> Dictionary:
 
 
 func _to_string() -> String:
-	return "DotNetIdentity(#%d %s)" % [net_id, prefab_id]
+	return "GSNetIdentity(#%d %s)" % [net_id, prefab_id]

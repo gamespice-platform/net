@@ -1,4 +1,4 @@
-class_name DotNetStats
+class_name GSNetStats
 extends RefCounted
 
 ## Counters for what the network is actually doing. [b]Netcode fails quietly.[/b] A game with a broken
@@ -41,7 +41,7 @@ var snapshots_received: int = 0
 var _last_snapshot_tick: int = -1
 
 ## Ticks between two snapshots the sender meant to send, which is what a gap is measured in.
-## [DotNetManager] sets it from [method DotNetConfig.ticks_per_snapshot] before every snapshot it
+## [GSNetManager] sets it from [method GSNetConfig.ticks_per_snapshot] before every snapshot it
 ## notes.
 var snapshot_interval_ticks: int = 1
 
@@ -136,7 +136,7 @@ func note_snapshot(tick: int) -> void:
 	_last_snapshot_tick = tick
 
 
-## Closes the rolling window if it is due, whether or not traffic arrived. [DotNetManager] calls this
+## Closes the rolling window if it is due, whether or not traffic arrived. [GSNetManager] calls this
 ## every physics frame.
 func roll() -> void:
 	_maybe_roll()
@@ -218,10 +218,10 @@ func reset() -> void:
 
 func describe() -> Dictionary:
 	return {
-		"sent": DotPaths.format_bytes(bytes_sent),
-		"received": DotPaths.format_bytes(bytes_received),
-		"send_rate": "%s/s" % DotPaths.format_bytes(int(bytes_sent_per_sec)),
-		"recv_rate": "%s/s" % DotPaths.format_bytes(int(bytes_received_per_sec)),
+		"sent": GSPaths.format_bytes(bytes_sent),
+		"received": GSPaths.format_bytes(bytes_received),
+		"send_rate": "%s/s" % GSPaths.format_bytes(int(bytes_sent_per_sec)),
+		"recv_rate": "%s/s" % GSPaths.format_bytes(int(bytes_received_per_sec)),
 		"packets_sent": packets_sent,
 		"packets_per_sec": int(packets_sent_per_sec),
 		"avg_packet": "%.0f B" % average_packet_bytes(),

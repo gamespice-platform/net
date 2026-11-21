@@ -1,4 +1,4 @@
-class_name DotNetRegistry
+class_name GSNetRegistry
 extends RefCounted
 
 ## The net-id table: which entities exist, and how to find one. Ids are allocated by the authority and
@@ -11,12 +11,12 @@ const ID_BITS := 24
 const MAX_ID := (1 << ID_BITS) - 1
 
 ## Emitted when an entity joins the table, on every peer.
-signal registered(identity: DotNetIdentity)
+signal registered(identity: GSNetIdentity)
 
 ## Emitted when one leaves.
-signal unregistered(net_id: int, identity: DotNetIdentity)
+signal unregistered(net_id: int, identity: GSNetIdentity)
 
-## net_id -> DotNetIdentity
+## net_id -> GSNetIdentity
 var _by_id: Dictionary = {}
 
 ## peer_id -> Array[int] of net_ids they own.
@@ -50,35 +50,35 @@ func is_authority() -> bool:
 
 
 ## Allocates the next id. Authority only.
-func allocate_id() -> DotResult:
+func allocate_id() -> GSResult:
 	if not _is_authority:
-		return DotResult.fail(
-			DotError.CODE_FORBIDDEN,
+		return GSResult.fail(
+			GSError.CODE_FORBIDDEN,
 			"Only the authority allocates network ids.",
 			"a client that allocates its own would collide with the server's"
 		)
 
 	if _next_id > MAX_ID:
-		return DotResult.fail(
-			DotError.CODE_STATE,
+		return GSResult.fail(
+			GSError.CODE_STATE,
 			"The network id space is exhausted.",
 			"%d ids allocated this session; restart or widen ID_BITS" % _next_id
 		)
 
 	var id := _next_id
 	_next_id += 1
-	return DotResult.success(id)
+	return GSResult.success(id)
 
 
 ## Adds an entity to the table. [param net_id] of 0 allocates one, which is what the authority does.
 func register(
-	identity: DotNetIdentity,
+	identity: GSNetIdentity,
 	net_id: int,
 	tick: int,
-	config: DotNetConfig
-) -> DotResult:
+	config: GSNetConfig
+) -> GSResult:
 	if identity == null:
-		return DotResult.fail(DotError.CODE_INVALID, "Null identity.")
+		return GSResult.fail(GSError.CODE_INVALID, "Null identity.")
 
 	var assigned := net_id
 
@@ -89,12 +89,12 @@ func register(
 		assigned = allocated.value
 
 	if _by_id.has(assigned):
-		var existing: DotNetIdentity = _by_id[assigned]
+		var existing: GSNetIdentity = _by_id[assigned]
 		if existing == identity:
-			return DotResult.success(assigned)
+			return GSResult.success(assigned)
 
-		return DotResult.fail(
-			DotError.CODE_STATE,
+		return GSResult.fail(
+			GSError.CODE_STATE,
 			"Network id %d is already in use." % assigned,
 			"held by %s" % existing
 		)
@@ -119,15 +119,15 @@ func register(
 	)
 
 	registered.emit(identity)
-	return DotResult.success(assigned)
+	return GSResult.success(assigned)
 
 
 ## Removes an entity from the table. Does not free the node. Freeing is the caller's decision: a
 ## despawn may mean "destroyed" or "left my interest set", and only the caller knows which.
-func unregister(net_id: int) -> DotResult:
+func unregister(net_id: int) -> GSResult:
 	if not _by_id.has(net_id):
-		return DotResult.fail(
-			DotError.CODE_INVALID, "No entity with id %d." % net_id
+		return GSResult.fail(
+			GSError.CODE_INVALID, "No entity with id %d." % net_id
 		)
 
 	# [b]The node may already be gone.[/b] The registry holds identities it does not own.
@@ -139,9 +139,9 @@ func unregister(net_id: int) -> DotResult:
 			(_by_owner[owner_id] as Array).erase(net_id)
 		_remember_removed(net_id)
 		unregistered.emit(net_id, null)
-		return DotResult.success(null)
+		return GSResult.success(null)
 
-	var identity: DotNetIdentity = stored
+	var identity: GSNetIdentity = stored
 
 	_by_id.erase(net_id)
 
@@ -153,7 +153,7 @@ func unregister(net_id: int) -> DotResult:
 	identity._on_unregistered()
 	unregistered.emit(net_id, identity)
 
-	return DotResult.success(identity)
+	return GSResult.success(identity)
 
 
 func _remember_removed(net_id: int) -> void:
@@ -179,13 +179,13 @@ func was_recently_removed(net_id: int) -> bool:
 
 
 ## Re-parents ownership of an entity.
-func change_owner(net_id: int, new_peer_id: int) -> DotResult:
+func change_owner(net_id: int, new_peer_id: int) -> GSResult:
 	if not _by_id.has(net_id):
-		return DotResult.fail(
-			DotError.CODE_INVALID, "No entity with id %d." % net_id
+		return GSResult.fail(
+			GSError.CODE_INVALID, "No entity with id %d." % net_id
 		)
 
-	var identity: DotNetIdentity = _by_id[net_id]
+	var identity: GSNetIdentity = _by_id[net_id]
 	var previous := identity.owner_peer_id
 
 	if _by_owner.has(previous):
@@ -197,11 +197,11 @@ func change_owner(net_id: int, new_peer_id: int) -> DotResult:
 
 	identity.set_owner_peer(new_peer_id, _local_peer_id)
 
-	return DotResult.success(identity)
+	return GSResult.success(identity)
 
 
-func get_identity(net_id: int) -> DotNetIdentity:
-	var identity: DotNetIdentity = _by_id.get(net_id)
+func get_identity(net_id: int) -> GSNetIdentity:
+	var identity: GSNetIdentity = _by_id.get(net_id)
 	# An identity whose node was freed without unregistering would be a dangling
 	# reference. Cleaning up here keeps a missed despawn from becoming a crash.
 	if identity != null and not is_instance_valid(identity):
@@ -215,8 +215,8 @@ func has(net_id: int) -> bool:
 
 
 ## Every identity still worth walking, and the freed ones dropped as they are found.
-func all() -> Array[DotNetIdentity]:
-	var out: Array[DotNetIdentity] = []
+func all() -> Array[GSNetIdentity]:
+	var out: Array[GSNetIdentity] = []
 	var stale: Array[int] = []
 
 	for net_id in _by_id:
@@ -227,11 +227,11 @@ func all() -> Array[DotNetIdentity]:
 			stale.append(int(net_id))
 			continue
 
-		out.append(found as DotNetIdentity)
+		out.append(found as GSNetIdentity)
 
 	for net_id in stale:
 		_by_id.erase(net_id)
-		DotLog.debug(CHANNEL, "dropped an entity that was freed without being unregistered", {
+		GSLog.debug(CHANNEL, "dropped an entity that was freed without being unregistered", {
 			"net_id": net_id,
 		})
 
@@ -247,8 +247,8 @@ func ids() -> PackedInt64Array:
 
 
 ## Entities owned by a peer.
-func owned_by(peer_id: int) -> Array[DotNetIdentity]:
-	var out: Array[DotNetIdentity] = []
+func owned_by(peer_id: int) -> Array[GSNetIdentity]:
+	var out: Array[GSNetIdentity] = []
 
 	for net_id in _by_owner.get(peer_id, []):
 		var identity := get_identity(net_id)
@@ -259,8 +259,8 @@ func owned_by(peer_id: int) -> Array[DotNetIdentity]:
 
 
 ## Entities carrying an interest tag.
-func with_tag(tag: String) -> Array[DotNetIdentity]:
-	var out: Array[DotNetIdentity] = []
+func with_tag(tag: String) -> Array[GSNetIdentity]:
+	var out: Array[GSNetIdentity] = []
 	for identity in all():
 		if identity.has_tag(tag):
 			out.append(identity)
@@ -268,8 +268,8 @@ func with_tag(tag: String) -> Array[DotNetIdentity]:
 
 
 ## Entities the local peer predicts.
-func predicted() -> Array[DotNetIdentity]:
-	var out: Array[DotNetIdentity] = []
+func predicted() -> Array[GSNetIdentity]:
+	var out: Array[GSNetIdentity] = []
 	for identity in all():
 		if identity.is_predicted():
 			out.append(identity)
@@ -277,7 +277,7 @@ func predicted() -> Array[DotNetIdentity]:
 
 
 ## Removes and returns every entity a peer owned. What a disconnect calls.
-func take_owned_by(peer_id: int) -> Array[DotNetIdentity]:
+func take_owned_by(peer_id: int) -> Array[GSNetIdentity]:
 	var taken := owned_by(peer_id)
 
 	for identity in taken:
@@ -286,7 +286,7 @@ func take_owned_by(peer_id: int) -> Array[DotNetIdentity]:
 	_by_owner.erase(peer_id)
 
 	if not taken.is_empty():
-		DotLog.debug(
+		GSLog.debug(
 			CHANNEL,
 			"released entities owned by a departing peer",
 			{"peer": peer_id, "count": taken.size()}

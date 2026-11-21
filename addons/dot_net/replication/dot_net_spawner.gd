@@ -1,5 +1,5 @@
 @tool
-class_name DotNetSpawner
+class_name GSNetSpawner
 extends Node
 
 ## Creates networked entities from a prefab table, on every peer. [b]The prefab table is an allow-list,
@@ -8,7 +8,7 @@ extends Node
 const CHANNEL := "net.spawn"
 
 ## Emitted after an entity is created locally, on every peer.
-signal spawned(identity: DotNetIdentity)
+signal spawned(identity: GSNetIdentity)
 
 ## Emitted before one is removed.
 signal despawned(net_id: int)
@@ -17,7 +17,7 @@ signal despawned(net_id: int)
 
 ## Where spawned entities are added. Defaults to a child of this node. Point it at the game's own
 ## container so networked entities land where the game expects them rather than under an addon node.
-@export var container_ref: DotNodeRef = null
+@export var container_ref: GSNodeRef = null
 
 ## Free the node when an entity despawns. Off lets a game keep the node — for a death animation, a
 ## ragdoll, a pooled instance.
@@ -28,8 +28,8 @@ signal despawned(net_id: int)
 ## Prefabs declared in the inspector, as [code]id -> PackedScene[/code].
 @export var prefabs: Dictionary = {}
 
-var registry: DotNetRegistry = null
-var config: DotNetConfig = null
+var registry: GSNetRegistry = null
+var config: GSNetConfig = null
 
 ## id -> PackedScene
 var _prefabs: Dictionary = {}
@@ -45,14 +45,14 @@ func _ready() -> void:
 		return
 
 	if container_ref == null:
-		container_ref = DotNodeRef.of_created(&"Entities", Node)
+		container_ref = GSNodeRef.of_created(&"Entities", Node)
 
 	_container = container_ref.resolve_or_null(self, CHANNEL)
 
 	for id in prefabs:
 		var scene: Variant = prefabs[id]
 		if not (scene is PackedScene):
-			DotLog.error(
+			GSLog.error(
 				CHANNEL,
 				"a declared prefab is not a scene and was not registered",
 				{"id": str(id), "was": type_string(typeof(scene))}
@@ -63,56 +63,56 @@ func _ready() -> void:
 		# spawn that silently produces a non-networked object.
 		var registered := register_prefab(StringName(str(id)), scene as PackedScene)
 		if not registered.ok:
-			DotLog.error(
+			GSLog.error(
 				CHANNEL,
 				"a declared prefab was refused",
 				{"id": str(id), "why": str(registered.error)}
 			)
 
 
-func setup(p_registry: DotNetRegistry, p_config: DotNetConfig) -> void:
+func setup(p_registry: GSNetRegistry, p_config: GSNetConfig) -> void:
 	registry = p_registry
 	config = p_config
 
 
-## Adds a prefab. The scene must contain a [DotNetIdentity] somewhere in it; that is checked at
+## Adds a prefab. The scene must contain a [GSNetIdentity] somewhere in it; that is checked at
 ## registration rather than at spawn time, so a mistake is a startup error rather than a spawn that
 ## silently produces a non-networked object.
-func register_prefab(id: StringName, scene: PackedScene) -> DotResult:
+func register_prefab(id: StringName, scene: PackedScene) -> GSResult:
 	if id == &"":
-		return DotResult.fail(DotError.CODE_INVALID, "A prefab needs an id.")
+		return GSResult.fail(GSError.CODE_INVALID, "A prefab needs an id.")
 
 	if scene == null:
-		return DotResult.fail(
-			DotError.CODE_INVALID, "Prefab '%s' has no scene." % id
+		return GSResult.fail(
+			GSError.CODE_INVALID, "Prefab '%s' has no scene." % id
 		)
 
 	if _prefabs.has(id) or _factories.has(id):
-		return DotResult.fail(
-			DotError.CODE_STATE, "Prefab '%s' is already registered." % id
+		return GSResult.fail(
+			GSError.CODE_STATE, "Prefab '%s' is already registered." % id
 		)
 
 	var state := scene.get_state()
 	if not _state_has_identity(state):
-		return DotResult.fail(
-			DotError.CODE_INVALID,
-			"Prefab '%s' contains no DotNetIdentity." % id,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
+			"Prefab '%s' contains no GSNetIdentity." % id,
 			"add one as a child of the entity root"
 		)
 
 	_prefabs[id] = scene
-	DotLog.debug(CHANNEL, "prefab registered", {"id": String(id)})
+	GSLog.debug(CHANNEL, "prefab registered", {"id": String(id)})
 
-	return DotResult.success(id)
+	return GSResult.success(id)
 
 
-## Checks a packed scene for a [DotNetIdentity] without instantiating it. Reading the scene state
+## Checks a packed scene for a [GSNetIdentity] without instantiating it. Reading the scene state
 ## rather than instantiating avoids paying for every prefab at startup, which matters when there are
 ## hundreds.
 static func _state_has_identity(state: SceneState) -> bool:
 	for i in range(state.get_node_count()):
 		var type := state.get_node_type(i)
-		if type == &"DotNetIdentity":
+		if type == &"GSNetIdentity":
 			return true
 
 		# A scene saved with a script rather than a registered type reports its base
@@ -122,23 +122,23 @@ static func _state_has_identity(state: SceneState) -> bool:
 				var script: Variant = state.get_node_property_value(i, p)
 				if script is Script:
 					var global_name := (script as Script).get_global_name()
-					if global_name == &"DotNetIdentity":
+					if global_name == &"GSNetIdentity":
 						return true
 
 	return false
 
 
 ## Registers a factory instead of a scene. Signature: [code]func(context: Dictionary) -> Node[/code].
-func register_factory(id: StringName, factory: Callable) -> DotResult:
+func register_factory(id: StringName, factory: Callable) -> GSResult:
 	if _prefabs.has(id) or _factories.has(id):
-		return DotResult.fail(
-			DotError.CODE_STATE, "Prefab '%s' is already registered." % id
+		return GSResult.fail(
+			GSError.CODE_STATE, "Prefab '%s' is already registered." % id
 		)
 
 	_factories[id] = factory
-	DotLog.debug(CHANNEL, "factory registered", {"id": String(id)})
+	GSLog.debug(CHANNEL, "factory registered", {"id": String(id)})
 
-	return DotResult.success(id)
+	return GSResult.success(id)
 
 
 func has_prefab(id: StringName) -> bool:
@@ -163,13 +163,13 @@ func spawn(
 	transform: Transform3D = Transform3D.IDENTITY,
 	tick: int = 0,
 	context: Dictionary = {}
-) -> DotResult:
+) -> GSResult:
 	if registry == null:
-		return DotResult.fail(DotError.CODE_STATE, "Spawner has no registry.")
+		return GSResult.fail(GSError.CODE_STATE, "Spawner has no registry.")
 
 	if not registry.is_authority():
-		return DotResult.fail(
-			DotError.CODE_FORBIDDEN,
+		return GSResult.fail(
+			GSError.CODE_FORBIDDEN,
 			"Only the authority may spawn.",
 			"a client spawns by asking the server, not by creating an entity"
 		)
@@ -186,10 +186,10 @@ func spawn_remote(
 	transform: Transform3D,
 	tick: int,
 	context: Dictionary = {}
-) -> DotResult:
+) -> GSResult:
 	if net_id <= 0:
-		return DotResult.fail(
-			DotError.CODE_INVALID, "A remote spawn needs a network id."
+		return GSResult.fail(
+			GSError.CODE_INVALID, "A remote spawn needs a network id."
 		)
 
 	return _instantiate(
@@ -204,11 +204,11 @@ func _instantiate(
 	transform: Transform3D,
 	tick: int,
 	context: Dictionary
-) -> DotResult:
+) -> GSResult:
 	if not has_prefab(prefab_id):
 		# Refusing an unregistered id is the whole security property of the table.
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"Unknown prefab '%s'." % prefab_id,
 			"registered: %s" % ", ".join(Array(prefab_ids()))
 		)
@@ -218,8 +218,8 @@ func _instantiate(
 	if _factories.has(prefab_id):
 		var produced: Variant = (_factories[prefab_id] as Callable).call(context)
 		if not (produced is Node):
-			return DotResult.fail(
-				DotError.CODE_INTERNAL,
+			return GSResult.fail(
+				GSError.CODE_INTERNAL,
 				"The factory for '%s' did not return a Node." % prefab_id
 			)
 		node = produced as Node
@@ -227,17 +227,17 @@ func _instantiate(
 		node = (_prefabs[prefab_id] as PackedScene).instantiate()
 
 	if node == null:
-		return DotResult.fail(
-			DotError.CODE_INTERNAL, "Could not instantiate '%s'." % prefab_id
+		return GSResult.fail(
+			GSError.CODE_INTERNAL, "Could not instantiate '%s'." % prefab_id
 		)
 
 	var identity := _find_identity(node)
 
 	if identity == null:
 		node.queue_free()
-		return DotResult.fail(
-			DotError.CODE_INVALID,
-			"'%s' produced a node with no DotNetIdentity." % prefab_id
+		return GSResult.fail(
+			GSError.CODE_INVALID,
+			"'%s' produced a node with no GSNetIdentity." % prefab_id
 		)
 
 	identity.prefab_id = prefab_id
@@ -247,8 +247,8 @@ func _instantiate(
 		_container = container_ref.resolve_or_null(self, CHANNEL)
 	if _container == null:
 		node.queue_free()
-		return DotResult.fail(
-			DotError.CODE_STATE, "The spawner has no container node."
+		return GSResult.fail(
+			GSError.CODE_STATE, "The spawner has no container node."
 		)
 
 	# A factory is allowed to hand back a node it already owns — that is what pooling is, and what
@@ -270,7 +270,7 @@ func _instantiate(
 		node.queue_free()
 		return result
 
-	DotLog.debug(
+	GSLog.debug(
 		CHANNEL,
 		"spawned",
 		{
@@ -281,19 +281,19 @@ func _instantiate(
 	)
 
 	spawned.emit(identity)
-	return DotResult.success(identity)
+	return GSResult.success(identity)
 
 
 ## Removes an entity.
-func despawn(net_id: int) -> DotResult:
+func despawn(net_id: int) -> GSResult:
 	if registry == null:
-		return DotResult.fail(DotError.CODE_STATE, "Spawner has no registry.")
+		return GSResult.fail(GSError.CODE_STATE, "Spawner has no registry.")
 
 	var identity := registry.get_identity(net_id)
 
 	if identity == null:
-		return DotResult.fail(
-			DotError.CODE_INVALID, "No entity with id %d." % net_id
+		return GSResult.fail(
+			GSError.CODE_INVALID, "No entity with id %d." % net_id
 		)
 
 	despawned.emit(net_id)
@@ -305,7 +305,7 @@ func despawn(net_id: int) -> DotResult:
 	if free_on_despawn and is_instance_valid(node):
 		node.queue_free()
 
-	return DotResult.success(net_id)
+	return GSResult.success(net_id)
 
 
 ## Removes every entity a peer owned. Returns how many.
@@ -318,9 +318,9 @@ func despawn_owned_by(peer_id: int) -> int:
 	return taken.size()
 
 
-func _find_identity(node: Node) -> DotNetIdentity:
-	if node is DotNetIdentity:
-		return node as DotNetIdentity
+func _find_identity(node: Node) -> GSNetIdentity:
+	if node is GSNetIdentity:
+		return node as GSNetIdentity
 
 	# Breadth-first: the identity is conventionally a direct child, and stopping at
 	# the first one avoids claiming a nested entity's identity for its parent.
@@ -328,14 +328,14 @@ func _find_identity(node: Node) -> DotNetIdentity:
 
 	while not queue.is_empty():
 		var current: Node = queue.pop_front()
-		if current is DotNetIdentity:
-			return current as DotNetIdentity
+		if current is GSNetIdentity:
+			return current as GSNetIdentity
 		queue.append_array(current.get_children())
 
 	return null
 
 
-func _apply_transform(identity: DotNetIdentity, transform: Transform3D) -> void:
+func _apply_transform(identity: GSNetIdentity, transform: Transform3D) -> void:
 	var entity := identity.entity
 
 	if entity is Node3D:

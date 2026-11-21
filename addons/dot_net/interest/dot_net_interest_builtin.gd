@@ -1,6 +1,6 @@
 @tool
-class_name DotNetInterestAll
-extends DotNetInterest
+class_name GSNetInterestAll
+extends GSNetInterest
 
 ## Replicates everything to everyone. The right choice more often than it looks: a co-op game with
 ## eight players and thirty entities has nothing to gain from filtering, and interest management that
@@ -13,14 +13,14 @@ func _init() -> void:
 
 
 func _is_relevant(
-	_observer: DotNetIdentity,
-	_entity: DotNetIdentity,
+	_observer: GSNetIdentity,
+	_entity: GSNetIdentity,
 	_context: Dictionary
 ) -> bool:
 	return true
 
 
-## Thread-safe as itself, not as a subclass: see [method DotNetInterest.is_thread_safe].
+## Thread-safe as itself, not as a subclass: see [method GSNetInterest.is_thread_safe].
 ## Reads only frozen positions, the identities' fields and its own exports.
 func is_thread_safe() -> bool:
-	return (get_script() as Script).get_global_name() == &"DotNetInterestAll"
+	return (get_script() as Script).get_global_name() == &"GSNetInterestAll"

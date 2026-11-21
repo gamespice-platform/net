@@ -4,7 +4,7 @@ Multiplayer netcode for Godot 4: tick synchronisation, a bit-packed wire format,
 
 **The distributable is `addons/dot_net/`.** It requires [GameSpice Core](../dot-core) and does not depend on dot-server: a game can use dot-net over Godot's raw multiplayer, over dot-core's transports, or over anything else that moves bytes. It owns no socket and no client-to-server channel.
 
-Also requires **GameSpice Profile** (`DotProfileSet`, `DotProfile`, `DotProfileRuntime`, split from GameSpice Core): link `addons/dot_profile` next to `addons/dot_core`.
+Also requires **GameSpice Profile** (`GSProfileSet`, `GSProfile`, `GSProfileRuntime`, split from GameSpice Core): link `addons/dot_profile` next to `addons/dot_core`.
 
 ```bash
 ln -s ../../dot-core/addons/dot_core addons/dot_core
@@ -17,9 +17,9 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | Read | Before |
 | --- | --- |
 | [docs/README.md](docs/README.md) | the index |
-| [docs/timelines.md](docs/timelines.md) | `DotNetClock`, the interpolator, anything about when something is drawn or which tick a command is for |
-| [docs/prediction.md](docs/prediction.md) | `_net_simulate`, `DotNetPredictor`, `DotNetInput`, reconciliation, lag compensation |
-| [docs/replication.md](docs/replication.md) | `DotNetVar`, `DotNetBehaviour`, acked baselines, interest, the budget, snapshot cost |
+| [docs/timelines.md](docs/timelines.md) | `GSNetClock`, the interpolator, anything about when something is drawn or which tick a command is for |
+| [docs/prediction.md](docs/prediction.md) | `_net_simulate`, `GSNetPredictor`, `GSNetInput`, reconciliation, lag compensation |
+| [docs/replication.md](docs/replication.md) | `GSNetVar`, `GSNetBehaviour`, acked baselines, interest, the budget, snapshot cost |
 | [docs/wire.md](docs/wire.md) | the bit format, message ids, framing, the schema exchange, changing a message, unreliable delivery, snapshot parts and the MTU, unchanged entities |
 | [docs/security.md](docs/security.md) | anything a client sends, spawns, message direction, the reader |
 | [docs/testing.md](docs/testing.md) | the three suites, the UDP relay, adding a check |
@@ -30,24 +30,24 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | Path | What |
 | --- | --- |
 | `addons/dot_net/dot_net_manager.gd` | tick loop, snapshot receive, message routing; extends `dot_net_manager_receive.gd` < `_send.gd` < `_wire.gd` < `_state.gd` (snapshot receive and entity apply, snapshot send, wire build, state) |
-| `addons/dot_net/core/` | `DotNetClock` (three timelines: read it first), `DotNetConfig` (all tuning; `describe_budget()`) |
+| `addons/dot_net/core/` | `GSNetClock` (three timelines: read it first), `GSNetConfig` (all tuning; `describe_budget()`) |
 | `addons/dot_net/wire/` | writer (bit packing, quantisation), reader (the untrusted side), messages, the registry (derived ids, framing, schema exchange), packets (batching, fragmentation) |
-| `addons/dot_net/replication/` | `DotNetVar`, `DotNetIdentity`, `DotNetBehaviour` (what a game subclasses most), registry (ids never reused), spawner (prefab allow-list, factories) |
-| `addons/dot_net/snapshot/` | `DotNetSnapshot`, `DotNetInterpolator` |
-| `addons/dot_net/prediction/` | `DotNetInput` and its buffer, `DotNetPredictor` |
-| `addons/dot_net/lagcomp/` | `DotNetHistory`: rewind the world to what the shooter saw |
+| `addons/dot_net/replication/` | `GSNetVar`, `GSNetIdentity`, `GSNetBehaviour` (what a game subclasses most), registry (ids never reused), spawner (prefab allow-list, factories) |
+| `addons/dot_net/snapshot/` | `GSNetSnapshot`, `GSNetInterpolator` |
+| `addons/dot_net/prediction/` | `GSNetInput` and its buffer, `GSNetPredictor` |
+| `addons/dot_net/lagcomp/` | `GSNetHistory`: rewind the world to what the shooter saw |
 | `addons/dot_net/interest/` | base, all, distance, grid |
-| `addons/dot_net/bandwidth/`, `stats/` | per-peer budget with a starvation-bounded accumulator; `DotNetStats` |
-| `addons/dot_net/profile/` | `DotNetProfileLink`: opt-in carrier for GameSpice Core's `DotProfileRuntime` (admin requests up, rows down, late-joiner snapshot); `attach` before start is the only switch; `DotNetCostProbe`: reports bytes per message class (messages, snapshots, schema) to GameSpice Profiler's `DotProfilerNetCost` when that addon is installed and recording (looked up by name, no dependency; one bool test otherwise) |
+| `addons/dot_net/bandwidth/`, `stats/` | per-peer budget with a starvation-bounded accumulator; `GSNetStats` |
+| `addons/dot_net/profile/` | `GSNetProfileLink`: opt-in carrier for GameSpice Core's `GSProfileRuntime` (admin requests up, rows down, late-joiner snapshot); `attach` before start is the only switch; `GSNetCostProbe`: reports bytes per message class (messages, snapshots, schema) to GameSpice Profiler's `GSProfilerNetCost` when that addon is installed and recording (looked up by name, no dependency; one bool test otherwise) |
 | `addons/dot_net/testing/dot_net_udp_relay.gd` | a lossy UDP relay for tests. No `class_name`: preload by path |
 | `examples/` | `netcode_demo`, `diagnostics_demo`, `loss_demo`, `relay_demo`, `transport_fit_selftest`; `netcode_demo`'s sections live in `examples/selftest/` as a chain of scripts (`netcode_base` < `netcode_tests` < `netcode_messages_and_replication` to `netcode_unchanged_and_lossy_lead`), each extending the one before, so a helper sits in the file of its first caller or above |
 
 ## Running and testing
 
-- The family's two steps ([family CLAUDE.md](../../CLAUDE.md#validating-anything)), then `net_cost_probe_selftest.tscn` (the cost probe) and all five scenes (`profile_link_demo.tscn`: the profile link, server plus three clients): `netcode_demo.tscn` (everything, including a two-manager integration run under loss), `diagnostics_demo.tscn` (`DotNetStats`, `DotNetSnapshot`), `loss_demo.tscn` (a server and two clients over a seeded link that loses, repeats, delays and reorders snapshots and acks, and a stream model; convergence, no regression, parts, counters; `-- --seed=N` runs one seed), `relay_demo.tscn` (the relay, a real ENet pair, and ENet's packet throttle). [testing](docs/testing.md)
+- The family's two steps ([family CLAUDE.md](../../CLAUDE.md#validating-anything)), then `net_cost_probe_selftest.tscn` (the cost probe) and all five scenes (`profile_link_demo.tscn`: the profile link, server plus three clients): `netcode_demo.tscn` (everything, including a two-manager integration run under loss), `diagnostics_demo.tscn` (`GSNetStats`, `GSNetSnapshot`), `loss_demo.tscn` (a server and two clients over a seeded link that loses, repeats, delays and reorders snapshots and acks, and a stream model; convergence, no regression, parts, counters; `-- --seed=N` runs one seed), `relay_demo.tscn` (the relay, a real ENet pair, and ENet's packet throttle). [testing](docs/testing.md)
 - **A GameSpice Net change is not done until the games' `headless_net` suites agree**, and game-fatal-contact's `headless_lossy` for anything about loss or timing: most bugs here were found there, by a second peer, a real socket or a real round trip that this repo's suites lacked.
-- **A client whose frame can stall wants `reconcile_once_per_frame`** (a browser build has one thread): reconcile per snapshot replays the whole input lead for each queued snapshot. A game's own `client_tick` that bypasses `DotNetManager.client_tick` predicts through `predict_tick(tick, input)` (API 10), which flushes first; simulating the predicted behaviours by hand leaves `skip_matching_replays` nothing to match and `perf_counters` no predict time. It predicts on the input as the server decodes it (`DotNetInput.round_trip`). A behaviour that simulates nothing right now (a dead player) answers `_net_predicts()` false, or every snapshot replays the whole lead for nothing. [prediction](docs/prediction.md#reconciliation)
-- The integration test runs both managers in one process, which is why there are no autoloads and why `DotNetManager.service_scope` exists.
+- **A client whose frame can stall wants `reconcile_once_per_frame`** (a browser build has one thread): reconcile per snapshot replays the whole input lead for each queued snapshot. A game's own `client_tick` that bypasses `GSNetManager.client_tick` predicts through `predict_tick(tick, input)` (API 10), which flushes first; simulating the predicted behaviours by hand leaves `skip_matching_replays` nothing to match and `perf_counters` no predict time. It predicts on the input as the server decodes it (`GSNetInput.round_trip`). A behaviour that simulates nothing right now (a dead player) answers `_net_predicts()` false, or every snapshot replays the whole lead for nothing. [prediction](docs/prediction.md#reconciliation)
+- The integration test runs both managers in one process, which is why there are no autoloads and why `GSNetManager.service_scope` exists.
 
 ## Extension points
 
@@ -55,19 +55,19 @@ A game should never need to fork dot-net. Family rules: [extension-points.md](..
 
 | To change | Subclass / assign | Notes |
 | --- | --- | --- |
-| What replicates, and how precisely | `DotNetVar` declarations in `_register_net_vars()` | `Type.CUSTOM` + `.codec(w, r)` replicates anything |
-| What the owner's prediction is judged on | `.server_driven()` on a `DotNetVar` | For state only the server writes; skipped by the replay-skip match (API 17) |
-| Simulation | `DotNetBehaviour._net_simulate` | Must be deterministic |
-| Player controls | `DotNetInput` subclass | `_sanitise()` is not optional |
-| Message types | `DotNetMessageRegistry.register` | Id derived from the name; `required = false` for a type a peer may lack |
-| Who sees what | `DotNetInterest` subclass | The biggest lever on bandwidth and the only real anti-cheat |
-| How entities are made | `DotNetSpawner.register_factory` | For pooling or procedural entities |
-| Where bytes go | `DotNetManager.send_fn` | Transport-agnostic by construction |
+| What replicates, and how precisely | `GSNetVar` declarations in `_register_net_vars()` | `Type.CUSTOM` + `.codec(w, r)` replicates anything |
+| What the owner's prediction is judged on | `.server_driven()` on a `GSNetVar` | For state only the server writes; skipped by the replay-skip match (API 17) |
+| Simulation | `GSNetBehaviour._net_simulate` | Must be deterministic |
+| Player controls | `GSNetInput` subclass | `_sanitise()` is not optional |
+| Message types | `GSNetMessageRegistry.register` | Id derived from the name; `required = false` for a type a peer may lack |
+| Who sees what | `GSNetInterest` subclass | The biggest lever on bandwidth and the only real anti-cheat |
+| How entities are made | `GSNetSpawner.register_factory` | For pooling or procedural entities |
+| Where bytes go | `GSNetManager.send_fn` | Transport-agnostic by construction |
 | Reading a computed property | `_net_read_property` / `_net_write_property` | Replicate something you do not store |
 | Extra rewind state | `_net_record_history()` on a behaviour | Crouch flags, animation frames |
 | Drawing interpolated state | `_net_interpolated(render_tick)` | Not `_net_state_applied`, which fires per snapshot |
 
-`DotNetInterest`: `_is_relevant` is the whole interface for most strategies; `_candidates` is for spatial indexes that answer in bulk; `_score` feeds prioritisation. `netcode_demo`'s `TagInterest` is a dozen lines.
+`GSNetInterest`: `_is_relevant` is the whole interface for most strategies; `_candidates` is for spatial indexes that answer in bulk; `_score` feeds prioritisation. `netcode_demo`'s `TagInterest` is a dozen lines.
 
 ## Rules that bite
 
@@ -77,9 +77,9 @@ Short forms; the reasoning is in the linked file.
 
 - Input runs ahead of the server, render behind it, and the server tick is only estimated. [timelines](docs/timelines.md#three-timelines-not-one)
 - A client AHEAD is smoothed by scaling tick duration; a client BEHIND by more than the input margin jumps forward at once. Never smooth "behind". [timelines](docs/timelines.md#drift-and-catch-up)
-- A client runs as many ticks a second as its server holds (`DotNetClock._pace`, `server_pace()`): the median of three 1.5 s windows of the quickest snapshot arrivals against unscaled local time, followed below 0.97 of the rate and let go above 0.985, so a nominal server changes nothing. At the nominal rate against an overloaded server (owner's sim host, 58-61 of 66) the input lead ran away until it snapped and every reconcile replayed it (35-82 ticks). Local time, the tick step, credited stalls and flight ticks run at the pace; the simulated step stays `tick_duration()`. [timelines](docs/timelines.md#a-server-slower-than-its-rate)
+- A client runs as many ticks a second as its server holds (`GSNetClock._pace`, `server_pace()`): the median of three 1.5 s windows of the quickest snapshot arrivals against unscaled local time, followed below 0.97 of the rate and let go above 0.985, so a nominal server changes nothing. At the nominal rate against an overloaded server (owner's sim host, 58-61 of 66) the input lead ran away until it snapped and every reconcile replayed it (35-82 ticks). Local time, the tick step, credited stalls and flight ticks run at the pace; the simulated step stays `tick_duration()`. [timelines](docs/timelines.md#a-server-slower-than-its-rate)
 - The clock credits the time the engine drops past its step cap from the wall clock (`note_engine_frame`, `note_engine_time`), to local time, the tick and the receive timeline at once, before the snapshots after it are read; only while one `advance` a physics step drives it (a hand-driven harness is a stall by the wall clock) and no server's clock lives in the process (it stalled too: `server_in_process()`). A test that fakes the engine clears `follow_engine_time` and calls them itself. [timelines](docs/timelines.md#time-the-engine-drops)
-- A client that adopts a server's tick rate calls `DotNetClock.adopt_tick_rate(rate)` (API 7), not `Engine.physics_ticks_per_second = rate`: it also raises `max_physics_steps_per_frame` to a quarter second of ticks (never lowers it), because the engine's default 8 is 62.5 ms at 128 Hz and a client under 16 fps then runs fewer ticks than the server. A game on an older shell inlines the same rule behind `DotAddonApi.build_level("dot_net") >= 7`.
+- A client that adopts a server's tick rate calls `GSNetClock.adopt_tick_rate(rate)` (API 7), not `Engine.physics_ticks_per_second = rate`: it also raises `max_physics_steps_per_frame` to a quarter second of ticks (never lowers it), because the engine's default 8 is 62.5 ms at 128 Hz and a client under 16 fps then runs fewer ticks than the server. A game on an older shell inlines the same rule behind `GSAddonApi.build_level("dot_net") >= 7`.
 - Steered by the reports, a clock at or behind the newest snapshot jumps (`floor_count`); nothing in that floor comes from the round trip, which holds the stall. [timelines](docs/timelines.md#the-input-lead-the-server-reports)
 - Once the server reports the input lead (`FEATURE_INPUT_LEAD`), the input timeline steers to it every frame (up to 12% fast; 5% slow, 12% while the latest report is more than 2 ticks past the slack; a jump only past 0.5 s of deficit; a frame far longer than its window is discounted from the reports, `_discount_long_frame`); the discount reaches every held command by slot, because a credited stall over `LEAD_HISTORY` (512) ticks, 4 s at 128 Hz, moves `tick` past the window and used to leave the stalled commands' lead undiscounted: the clock jumped the stall ahead and snapped back, measured against when each command was SENT (`_lead_at`), never against now; the receive timeline is held to real time meanwhile (`_receive_excess`). Stamp commands from `input_tick()`; a host stamping its own lead clears `FEATURE_INPUT_LEAD` (the cap only stops a runaway). [timelines](docs/timelines.md#the-input-lead-the-server-reports)
 - `SNAP_THRESHOLD_SECONDS` is a duration, never a tick count. [timelines](docs/timelines.md#drift-and-catch-up)
@@ -97,7 +97,7 @@ Short forms; the reasoning is in the linked file.
 - A replay applies each tick's input and then simulates, exactly as `server_tick` does; a hole between two inputs replays on the older one; nothing past the newest input, or past the newest tick predicted (a clock moved before `predict_tick`), is replayed. [prediction](docs/prediction.md#reconciliation)
 - A predicted entity rewinds to `authoritative_values()` (absent means unchanged), a remote one is interpolated from `received_values()`. Never feed either from the properties, which hold the client's own prediction or blend. [prediction](docs/prediction.md#what-the-server-said)
 - A renderer adds `predictor.visual_offset(net_id)` to the predicted entity it draws; every reconciliation that moves it is eased and offsets add up. [prediction](docs/prediction.md#corrections-are-eased-on-screen-every-one-of-them)
-- A predicted bump against a remote is off by its speed times the age of the last snapshot. `extrapolated_value(position, velocity, tick)`, asked for the tick being simulated, carries it along its replicated velocity for up to `remote_extrapolation_sec` (0, the default, is the last heard value; set it to the input lead plus one snapshot interval, no more). Where a bump only stops the mover, collide at the mover's view tick instead, on both ends (`DotNetInterpolator.value_at`, API 14; game-fatal-contact). [prediction](docs/prediction.md#solid-players-that-only-stop-the-mover-collide-where-the-movers-client-drew-them)
+- A predicted bump against a remote is off by its speed times the age of the last snapshot. `extrapolated_value(position, velocity, tick)`, asked for the tick being simulated, carries it along its replicated velocity for up to `remote_extrapolation_sec` (0, the default, is the last heard value; set it to the input lead plus one snapshot interval, no more). Where a bump only stops the mover, collide at the mover's view tick instead, on both ends (`GSNetInterpolator.value_at`, API 14; game-fatal-contact). [prediction](docs/prediction.md#solid-players-that-only-stop-the-mover-collide-where-the-movers-client-drew-them)
 - Send the last few inputs in each packet (`write_batch` / `read_batch`, `Buffer.recent`). [prediction](docs/prediction.md#input-batches)
 - Rewind is bounded by `max_rewind_sec` (1 s); a larger claim is clamped. [security](docs/security.md)
 

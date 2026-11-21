@@ -1,4 +1,4 @@
-class_name DotNetPacket
+class_name GSNetPacket
 extends RefCounted
 
 ## Batches messages into packets, and takes them apart again. [b]Why batch at all.[/b] Every packet
@@ -24,7 +24,7 @@ const MAX_FRAGMENTS := (1 << FRAGMENT_INDEX_BITS) - 1
 ## Accumulates messages until flushed.
 class Batch extends RefCounted:
 	var tick: int = 0
-	var messages: Array[DotNetMessage] = []
+	var messages: Array[GSNetMessage] = []
 	var _estimated_bytes: int = 0
 
 	func _init(p_tick: int = 0) -> void:
@@ -34,7 +34,7 @@ class Batch extends RefCounted:
 	func would_overflow(size_bytes: int, mtu: int) -> bool:
 		return _estimated_bytes + size_bytes > mtu or messages.size() >= MAX_MESSAGES
 
-	func add(message: DotNetMessage, size_bytes: int) -> void:
+	func add(message: GSNetMessage, size_bytes: int) -> void:
 		messages.append(message)
 		_estimated_bytes += size_bytes
 
@@ -48,16 +48,16 @@ class Batch extends RefCounted:
 ## Encodes a batch into one payload. Returns the bytes.
 static func encode_batch(
 	batch: Batch,
-	registry: DotNetMessageRegistry
-) -> DotResult:
+	registry: GSNetMessageRegistry
+) -> GSResult:
 	if batch.messages.size() > MAX_MESSAGES:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"Too many messages in one batch.",
 			"%d, limit %d" % [batch.messages.size(), MAX_MESSAGES]
 		)
 
-	var writer := DotNetWriter.new()
+	var writer := GSNetWriter.new()
 	writer.write_uint(batch.tick, HEADER_TICK_BITS)
 	writer.write_uint(batch.messages.size(), HEADER_COUNT_BITS)
 
@@ -67,11 +67,11 @@ static func encode_batch(
 			return encoded
 
 	if writer.overflowed:
-		return DotResult.fail(
-			DotError.CODE_INVALID, "The batch exceeded the buffer limit."
+		return GSResult.fail(
+			GSError.CODE_INVALID, "The batch exceeded the buffer limit."
 		)
 
-	return DotResult.success(writer.to_bytes())
+	return GSResult.success(writer.to_bytes())
 
 
 ## Decodes a payload into messages. [b]Every failure mode here is reachable from the network.[/b] A
@@ -79,22 +79,22 @@ static func encode_batch(
 ## returning what decoded successfully plus an error, rather than by throwing away the whole packet.
 static func decode_batch(
 	payload: PackedByteArray,
-	registry: DotNetMessageRegistry,
+	registry: GSNetMessageRegistry,
 	from_peer_id: int,
 	is_server: bool
-) -> DotResult:
-	var reader := DotNetReader.new(payload)
+) -> GSResult:
+	var reader := GSNetReader.new(payload)
 
 	var tick := reader.read_uint(HEADER_TICK_BITS)
 	var count := reader.read_uint(HEADER_COUNT_BITS)
 
 	if not reader.ok():
-		return DotResult.fail(
-			DotError.CODE_PARSE, "Truncated batch header.", "from peer %d" % from_peer_id
+		return GSResult.fail(
+			GSError.CODE_PARSE, "Truncated batch header.", "from peer %d" % from_peer_id
 		)
 
-	var messages: Array[DotNetMessage] = []
-	var first_error: DotError = null
+	var messages: Array[GSNetMessage] = []
+	var first_error: GSError = null
 
 	for i in range(count):
 		var decoded := registry.decode(reader, from_peer_id, is_server)
@@ -111,12 +111,12 @@ static func decode_batch(
 		if decoded.value == null:
 			continue
 
-		var message: DotNetMessage = decoded.value
+		var message: GSNetMessage = decoded.value
 		message.tick = tick
 		messages.append(message)
 
 	if first_error != null:
-		var result := DotResult.failure(first_error)
+		var result := GSResult.failure(first_error)
 		first_error.context = {
 			"decoded": messages.size(),
 			"expected": count,
@@ -124,7 +124,7 @@ static func decode_batch(
 		}
 		return result
 
-	return DotResult.success({"tick": tick, "messages": messages})
+	return GSResult.success({"tick": tick, "messages": messages})
 
 
 ## Splits an oversized payload into MTU-sized fragments. Only for reliable delivery — see the class
@@ -133,25 +133,25 @@ static func fragment(
 	payload: PackedByteArray,
 	fragment_id: int,
 	mtu: int = DEFAULT_MTU
-) -> DotResult:
+) -> GSResult:
 	# Each fragment carries its own header, so the usable payload is smaller than
 	# the MTU. 8 bytes covers id, index and total with room to spare.
 	var usable := mtu - 8
 
 	if usable <= 0:
-		return DotResult.fail(
-			DotError.CODE_INVALID, "MTU is too small to carry a fragment header."
+		return GSResult.fail(
+			GSError.CODE_INVALID, "MTU is too small to carry a fragment header."
 		)
 
 	if payload.size() <= usable:
 		var single := _write_fragment(payload, fragment_id, 0, 1)
-		return DotResult.success([single])
+		return GSResult.success([single])
 
 	var total := int(ceilf(float(payload.size()) / float(usable)))
 
 	if total > MAX_FRAGMENTS:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"Payload needs too many fragments.",
 			"%d fragments of %d bytes; limit is %d — send less per tick"
 				% [total, usable, MAX_FRAGMENTS]
@@ -165,7 +165,7 @@ static func fragment(
 			_write_fragment(payload.slice(start, end), fragment_id, index, total)
 		)
 
-	return DotResult.success(out)
+	return GSResult.success(out)
 
 
 static func _write_fragment(
@@ -174,7 +174,7 @@ static func _write_fragment(
 	index: int,
 	total: int
 ) -> PackedByteArray:
-	var writer := DotNetWriter.new()
+	var writer := GSNetWriter.new()
 	writer.write_uint(fragment_id, FRAGMENT_ID_BITS)
 	writer.write_uint(index, FRAGMENT_INDEX_BITS)
 	writer.write_uint(total, FRAGMENT_INDEX_BITS)
@@ -194,8 +194,8 @@ class Reassembler extends RefCounted:
 	var _pending: Dictionary = {}
 
 	## Feeds one fragment. Returns the whole payload once the set completes.
-	func feed(data: PackedByteArray) -> DotResult:
-		var reader := DotNetReader.new(data)
+	func feed(data: PackedByteArray) -> GSResult:
+		var reader := GSNetReader.new(data)
 
 		var fragment_id := reader.read_uint(FRAGMENT_ID_BITS)
 		var index := reader.read_uint(FRAGMENT_INDEX_BITS)
@@ -203,19 +203,19 @@ class Reassembler extends RefCounted:
 		var chunk := reader.read_bytes()
 
 		if not reader.ok():
-			return DotResult.fail(
-				DotError.CODE_PARSE, "Truncated fragment."
+			return GSResult.fail(
+				GSError.CODE_PARSE, "Truncated fragment."
 			)
 
 		if total == 0 or index >= total:
-			return DotResult.fail(
-				DotError.CODE_INVALID,
+			return GSResult.fail(
+				GSError.CODE_INVALID,
 				"Fragment index out of range.",
 				"index %d of %d" % [index, total]
 			)
 
 		if total == 1:
-			return DotResult.success(chunk)
+			return GSResult.success(chunk)
 
 		_expire()
 
@@ -245,14 +245,14 @@ class Reassembler extends RefCounted:
 		(entry["received"] as Dictionary)[index] = chunk
 
 		if (entry["received"] as Dictionary).size() < total:
-			return DotResult.success(null)
+			return GSResult.success(null)
 
 		var assembled := PackedByteArray()
 		for i in range(total):
 			assembled.append_array((entry["received"] as Dictionary)[i])
 
 		_pending.erase(fragment_id)
-		return DotResult.success(assembled)
+		return GSResult.success(assembled)
 
 	func _expire() -> void:
 		var cutoff := Time.get_ticks_msec() - int(timeout_sec * 1000.0)

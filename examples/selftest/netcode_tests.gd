@@ -8,7 +8,7 @@ extends "netcode_base.gd"
 func _test_wire() -> void:
 	print("[wire]")
 
-	var w := DotNetWriter.new()
+	var w := GSNetWriter.new()
 	w.write_bool(true)
 	w.write_bool(false)
 	w.write_uint(12345, 16)
@@ -30,19 +30,19 @@ func _test_wire() -> void:
 	_check("no overrun", r.ok())
 
 	# Bit packing must not waste bytes: 3 bits should occupy 1 byte, not 3.
-	var packed := DotNetWriter.new()
+	var packed := GSNetWriter.new()
 	for _i in range(8):
 		packed.write_bits(1, 1)
 	_check("8 bits pack into 1 byte", packed.byte_length() == 1)
 
 	# Reading past the end must be safe and detectable, not a crash.
-	var short := DotNetReader.new(PackedByteArray([0x01]))
+	var short := GSNetReader.new(PackedByteArray([0x01]))
 	short.read_uint(32)
 	_check("overrun detected", not short.ok())
 	_check("overrun returns zero", short.read_uint(8) == 0)
 
 	# A hostile length prefix must not cause an allocation attempt.
-	var hostile := DotNetWriter.new()
+	var hostile := GSNetWriter.new()
 	hostile.write_varint(4_000_000_000)
 	var hostile_reader := hostile.to_reader()
 	var refused := hostile_reader.read_bytes(1024)
@@ -58,7 +58,7 @@ func _test_wire_bits_reference() -> void:
 	rng.seed = 7_202_611
 	var widths: Array[int] = []
 	var values: Array[int] = []
-	var w := DotNetWriter.new()
+	var w := GSNetWriter.new()
 	for i in range(4000):
 		var bits: int = 1 + (i % 64) if i < 640 else rng.randi_range(1, 64)
 		var value := (rng.randi() << 32) | rng.randi()
@@ -69,7 +69,7 @@ func _test_wire_bits_reference() -> void:
 		w.write_bits(value, bits)
 
 	var data := w.to_bytes()
-	var r := DotNetReader.new(data)
+	var r := GSNetReader.new(data)
 	var pos := 0
 	var same := true
 	for i in range(widths.size()):
@@ -83,7 +83,7 @@ func _test_wire_bits_reference() -> void:
 			break
 	_check("read_bits equals the bit-by-bit reference (4000 fields, widths 1..64)", same and r.ok())
 
-	var fw := DotNetWriter.new()
+	var fw := GSNetWriter.new()
 	var floats := PackedFloat32Array([0.0, -0.0, 1.5, -3.25e-41, 3.4e38, INF, -INF, 0.1])
 	for pad in range(8):
 		if pad > 0:
@@ -106,7 +106,7 @@ func _test_wire_bits_reference() -> void:
 	_check("float32 round-trips bit for bit at every offset", floats_same and fr.ok())
 
 	# Two bits in, 24 bits of buffer: the byte reads stop at bit 18, as they always did.
-	var cut := DotNetReader.new(PackedByteArray([0xFF, 0xFF, 0xFF]))
+	var cut := GSNetReader.new(PackedByteArray([0xFF, 0xFF, 0xFF]))
 	cut.read_bits(2)
 	var cut_value := cut.read_float32()
 	_check("truncated float32 reads 0.0 and stops where the byte reads stopped",
@@ -122,14 +122,14 @@ func _test_bit_runs() -> void:
 	var all_read := true
 
 	for pad in range(8):
-		var scratch := DotNetWriter.new()
+		var scratch := GSNetWriter.new()
 		if pad > 0:
 			scratch.write_bits(0, pad)
 		scratch.write_uint(5, 6)
 		scratch.write_string("zee_smg")
 		scratch.write_uint(37, 7)
 
-		var into := DotNetWriter.new()
+		var into := GSNetWriter.new()
 		if pad > 0:
 			into.write_bits(0b1011011 & ((1 << pad) - 1), pad)
 		into.write_bit_run(scratch.to_bytes(), pad, scratch.bit_length())
@@ -149,12 +149,12 @@ func _test_bit_runs() -> void:
 	# And the shifted run: one copy encoded at bit 0, with nothing aligned in it, laid in
 	# at every offset -- the path every moving player's state takes.
 	var shifted_read := true
-	var source := DotNetWriter.new()
+	var source := GSNetWriter.new()
 	source.write_uint(5, 6)
 	source.write_float_range(12.5, -100.0, 100.0, 16)
 	source.write_uint(37, 7)
 	for pad in range(8):
-		var into := DotNetWriter.new()
+		var into := GSNetWriter.new()
 		if pad > 0:
 			into.write_bits(0b1101101 & ((1 << pad) - 1), pad)
 		into.write_shifted_run(source.to_bytes(), source.bit_length())
@@ -174,10 +174,10 @@ func _test_quantisation() -> void:
 	print("")
 	print("[quantisation]")
 
-	var config := DotNetConfig.new()
+	var config := GSNetConfig.new()
 	var bits := config.position_bits()
 
-	var w := DotNetWriter.new()
+	var w := GSNetWriter.new()
 	var original := Vector3(123.456, -78.9, 1000.001)
 	w.write_vector3_range(original, -config.world_extent, config.world_extent, bits)
 
@@ -194,7 +194,7 @@ func _test_quantisation() -> void:
 
 	# Out-of-range values clamp rather than wrap. Wrapping would teleport an entity
 	# across the world.
-	var far := DotNetWriter.new()
+	var far := GSNetWriter.new()
 	far.write_float_range(99999.0, -100.0, 100.0, 16)
 	_check(
 		"out of range clamps",
@@ -202,7 +202,7 @@ func _test_quantisation() -> void:
 	)
 
 	# Angles wrap, because they are cyclic.
-	var angle := DotNetWriter.new()
+	var angle := GSNetWriter.new()
 	angle.write_angle(370.0, 12)
 	var read_angle := angle.to_reader().read_angle(12)
 	_check("angle wraps to 0-360", read_angle < 15.0)
@@ -214,7 +214,7 @@ func _test_quantisation() -> void:
 			Vector3(1, 2, 3).normalized(), float(i) * 0.25
 		).normalized()
 
-		var qw := DotNetWriter.new()
+		var qw := GSNetWriter.new()
 		qw.write_quaternion(q, 12)
 		var qb := qw.to_reader().read_quaternion(12)
 
@@ -224,29 +224,29 @@ func _test_quantisation() -> void:
 	_check("quaternion within 1 degree (%.3f)" % rad_to_deg(worst), rad_to_deg(worst) < 1.0)
 
 	# A quaternion costs far less than four floats — the whole point.
-	var qsize := DotNetWriter.new()
+	var qsize := GSNetWriter.new()
 	qsize.write_quaternion(Quaternion.IDENTITY, 9)
 	_check("quaternion under 5 bytes", qsize.byte_length() <= 5)
 
 	# Directions must come back unit-length.
-	var dir := DotNetWriter.new()
+	var dir := GSNetWriter.new()
 	dir.write_direction(Vector3(1, 2, -3).normalized(), 12)
 	var read_dir := dir.to_reader().read_direction(12)
 	_check("direction stays normalised", absf(read_dir.length() - 1.0) < 0.01)
 
 	# A degenerate direction must not produce NaN on the far side.
-	var zero := DotNetWriter.new()
+	var zero := GSNetWriter.new()
 	zero.write_direction(Vector3.ZERO, 12)
 	_check("zero direction is finite", zero.to_reader().read_direction(12).is_finite())
 
 
 ## The body of a schema payload, as `decode` would hand it to `adopt_peer_schema`.
-func _schema_body(payload: PackedByteArray) -> DotNetReader:
-	var r := DotNetReader.new(payload)
-	var id := r.read_uint(DotNetMessageRegistry.ID_BITS)
+func _schema_body(payload: PackedByteArray) -> GSNetReader:
+	var r := GSNetReader.new(payload)
+	var id := r.read_uint(GSNetMessageRegistry.ID_BITS)
 	var bits := r.read_varint()
-	if id != DotNetMessageRegistry.SCHEMA_ID:
-		return DotNetReader.new(PackedByteArray())
+	if id != GSNetMessageRegistry.SCHEMA_ID:
+		return GSNetReader.new(PackedByteArray())
 	return r.take_bits(bits)
 
 
@@ -254,20 +254,20 @@ func _test_packets() -> void:
 	print("")
 	print("[packets]")
 
-	var registry := DotNetMessageRegistry.new()
+	var registry := GSNetMessageRegistry.new()
 	registry.register(&"demo.chat", ChatMessage)
 	registry.seal()
 
-	var batch := DotNetPacket.Batch.new(42)
+	var batch := GSNetPacket.Batch.new(42)
 	for i in range(5):
 		var m := ChatMessage.new()
 		m.text = "message %d" % i
 		batch.add(m, 16)
 
-	var encoded := DotNetPacket.encode_batch(batch, registry)
+	var encoded := GSNetPacket.encode_batch(batch, registry)
 	_check("batch encoded", encoded.ok)
 
-	var decoded := DotNetPacket.decode_batch(encoded.value, registry, 3, true)
+	var decoded := GSNetPacket.decode_batch(encoded.value, registry, 3, true)
 	_check("batch decoded", decoded.ok)
 
 	if decoded.ok:
@@ -284,7 +284,7 @@ func _test_packets() -> void:
 	for i in range(5):
 		var m := ChatMessage.new()
 		m.text = "message %d" % i
-		var single := DotNetWriter.new()
+		var single := GSNetWriter.new()
 		registry.encode(m, single)
 		separate += single.byte_length() + 28  # a conservative UDP+IP header
 	_check(
@@ -299,10 +299,10 @@ func _test_packets() -> void:
 	for i in range(big.size()):
 		big[i] = i % 251
 
-	var fragments := DotNetPacket.fragment(big, 7, 1200)
+	var fragments := GSNetPacket.fragment(big, 7, 1200)
 	_check("fragmented", fragments.ok and (fragments.value as Array).size() > 1)
 
-	var reassembler := DotNetPacket.Reassembler.new()
+	var reassembler := GSNetPacket.Reassembler.new()
 	var whole: PackedByteArray = PackedByteArray()
 
 	# Fed out of order, because that is how they arrive.
@@ -318,7 +318,7 @@ func _test_packets() -> void:
 	_check("nothing left pending", reassembler.pending_count() == 0)
 
 	# A fragment claiming an out-of-range index must be refused.
-	var bad := DotNetWriter.new()
+	var bad := GSNetWriter.new()
 	bad.write_uint(1, 16)
 	bad.write_uint(9, 8)
 	bad.write_uint(3, 8)
@@ -330,8 +330,8 @@ func _test_packets() -> void:
 
 
 ## Thinning keeps own and near entities every snapshot and far ones in turns.
-func _check_interest_thinning(config: DotNetConfig, observer: DotNetIdentity, all: Array[DotNetIdentity]) -> void:
-	var thin := DotNetInterestDistance.new()
+func _check_interest_thinning(config: GSNetConfig, observer: GSNetIdentity, all: Array[GSNetIdentity]) -> void:
+	var thin := GSNetInterestDistance.new()
 	thin.radius = 100000.0
 	thin.evaluation_interval_sec = 0.0
 	_check("thinning is off by default", not thin.thins())
@@ -342,7 +342,7 @@ func _check_interest_thinning(config: DotNetConfig, observer: DotNetIdentity, al
 		var kept: Array = []
 		var ctx := {"tick": snap * config.ticks_per_snapshot(), "config": config}
 		thin.thin_into(kept, observer, thin.relevant_for(observer, all, 1, ctx), 1, ctx)
-		for identity: DotNetIdentity in kept:
+		for identity: GSNetIdentity in kept:
 			seen[identity.net_id] = int(seen.get(identity.net_id, 0)) + 1
 	_check("thinning: own and near every snapshot, a far one once in far_every (%s)" % seen,
 		int(seen.get(1, 0)) == 4 and int(seen.get(2, 0)) == 4 and int(seen.get(3, 0)) == 1 and int(seen.get(4, 0)) == 1)
@@ -361,7 +361,7 @@ func _check_interest_thinning(config: DotNetConfig, observer: DotNetIdentity, al
 				var kept: Array = []
 				thin.thin_into(kept, observer, thin.relevant_for(observer, all, peer, ctx), peer, ctx)
 				var names := ""
-				for identity: DotNetIdentity in kept:
+				for identity: GSNetIdentity in kept:
 					names += "%d," % identity.net_id
 					if peer == 1:
 						seen[identity.net_id] = int(seen.get(identity.net_id, 0)) + 1
@@ -381,7 +381,7 @@ func _check_interest_thinning(config: DotNetConfig, observer: DotNetIdentity, al
 			var ctx := {"tick": snap * config.ticks_per_snapshot(), "config": config}
 			var kept: Array = []
 			thin.thin_into(kept, observer, thin.relevant_for(observer, all, 1, ctx), 1, ctx)
-			for identity: DotNetIdentity in kept:
+			for identity: GSNetIdentity in kept:
 				seen[identity.net_id] = int(seen.get(identity.net_id, 0)) + 1
 		var looked := aim == Vector3.RIGHT
 		_check("aim cone, aim %s: band 2 one in %d, band 1 still one in 4 (%s)" % [aim, 4 if looked else 8, seen],
@@ -392,7 +392,7 @@ func _check_interest_thinning(config: DotNetConfig, observer: DotNetIdentity, al
 ## The two entity caps combine to the tighter one.
 func _check_entity_caps() -> void:
 	# 0 means unlimited on either side rather than "cap at zero".
-	var caps := DotNetConfig.new()
+	var caps := GSNetConfig.new()
 	caps.max_entities_per_snapshot = 256
 	caps.max_tracked_entities = 64
 	_check("the tighter of the two entity caps wins", caps.entity_cap() == 64)
@@ -408,9 +408,9 @@ func _test_budget() -> void:
 	print("")
 	print("[bandwidth]")
 
-	var config := DotNetConfig.new()
+	var config := GSNetConfig.new()
 	config.per_client_budget = 1000
-	var budget := DotNetBudget.new(config)
+	var budget := GSNetBudget.new(config)
 
 	_check("spending allowed initially", budget.can_spend(1, 500))
 	budget.note_packet(1, 900)
@@ -428,7 +428,7 @@ func _test_budget() -> void:
 	high.net_id = 11
 	high.priority = 10.0
 
-	var candidates: Array[DotNetIdentity] = [low, high]
+	var candidates: Array[GSNetIdentity] = [low, high]
 	var scores := {10: 0.1, 11: 10.0}
 
 	var high_first := 0
@@ -448,17 +448,17 @@ func _test_budget() -> void:
 
 	# The order accumulate returns (an integer sort of the accumulators' bits) against a
 	# plain descending sort of the same numbers, with ties, zeros and a wide range.
-	var many: Array[DotNetIdentity] = []
+	var many: Array[GSNetIdentity] = []
 	var accumulators := {}
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 77
 	for i in 40:
-		var entity := DotNetIdentity.new()
+		var entity := GSNetIdentity.new()
 		entity.net_id = 100 + i
 		many.append(entity)
 		accumulators[entity.net_id] = [0.0, 1.0, 1.0, 0.25, 3.5e6, 1e-9][i % 6] * float(1 + i % 7) \
 			if i % 5 != 0 else rng.randf_range(0.0, 50.0)
-	var by_bits := DotNetBudget._by_accumulator(many, accumulators)
+	var by_bits := GSNetBudget._by_accumulator(many, accumulators)
 	var descending := true
 	for i in range(1, by_bits.size()):
 		if float(accumulators[by_bits[i - 1].net_id]) < float(accumulators[by_bits[i].net_id]):
@@ -477,7 +477,7 @@ func _test_budget() -> void:
 func _check_render_timeline_jitter() -> void:
 	# The same over a jittery link: 64 ticks, a snapshot every second tick, each taking
 	# 1..4 ticks to arrive, so they arrive late, early and out of order.
-	var jit := DotNetClock.new(64, false)
+	var jit := GSNetClock.new(64, false)
 	jit.adaptive_margin = false
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 64
@@ -517,7 +517,7 @@ func _check_render_timeline_jitter() -> void:
 
 
 ## A replicated node taken out of the tree is neither recorded nor rewound, and raises no engine error.
-func _check_history_skips_orphans(history: DotNetHistory, target: DotNetIdentity) -> void:
+func _check_history_skips_orphans(history: GSNetHistory, target: GSNetIdentity) -> void:
 	# A replicated node taken out of the tree between ticks (a round re-laying its map), before
 	# the identity is unregistered: recording it would sample the origin and a rewind would drag
 	# a hitbox through it.
@@ -549,12 +549,12 @@ func _test_starved_input() -> void:
 		mi.cmd.move == Vector2.ZERO and mi.cmd.buttons == 0 and mi.cmd.yaw == 1.5 and mi.plain == 3)
 	var moved := []
 	for hold in [0.25, 0.0]:
-		var s := DotNetManager.new()
+		var s := GSNetManager.new()
 		s.is_server = true
 		s.auto_tick = false
 		s.config_file = ""
 		s.service_scope = StringName("starve_%d" % moved.size())
-		s.config = DotNetConfig.new()
+		s.config = GSNetConfig.new()
 		s.config.starved_input_hold_sec = hold
 		add_child(s)
 		s.setup()
@@ -582,13 +582,13 @@ func _test_starved_input() -> void:
 	_check("and with no hold repeats its last input for ever (%.2f m)" % float(moved[1][0]),
 		absf(float(moved[1][0]) - 10.0) < 0.05)
 
-	var c := DotNetManager.new()
+	var c := GSNetManager.new()
 	c.is_server = false
 	c.local_peer_id = 5
 	c.auto_tick = false
 	c.config_file = ""
 	c.service_scope = &"starve_client"
-	c.config = DotNetConfig.new()
+	c.config = GSNetConfig.new()
 	add_child(c)
 	c.setup()
 	c.clock.sync_from_server(100, 0.0)
@@ -604,11 +604,11 @@ func _test_starved_input() -> void:
 		input.delta = 1.0 / 60.0
 		input.move = Vector2(0.7, 0.0)
 		# Sent first, as most games' bridges do: the server runs these bytes.
-		var sent := DotNetWriter.new()
+		var sent := GSNetWriter.new()
 		input.write(sent)
 		c.predict_tick(tick, input)
 		held.append(walker.velocity.x)
-		var after := DotNetWriter.new()
+		var after := GSNetWriter.new()
 		input.write(after)
 		kept.append(after.to_bytes() == sent.to_bytes())
 	_check("a client holds its prediction only after prediction_hold_sec without a snapshot (%s)" % str(held),
@@ -625,14 +625,14 @@ func _check_late_peer_id() -> void:
 	# A client that learns its peer id after setup, as the lobby's does: the registry must not
 	# keep the id it was built with, or its own entity registers as somebody else's and is never
 	# predicted (on a real socket only).
-	var late := DotNetManager.new()
+	var late := GSNetManager.new()
 	late.name = "LatePeer"
 	late.is_server = false
 	late.service_scope = &"late_peer"
 	late.local_peer_id = 0
 	late.auto_tick = false
 	late.config_file = ""
-	late.config = DotNetConfig.new()
+	late.config = GSNetConfig.new()
 	add_child(late)
 	var _up := late.setup()
 	late.local_peer_id = 7
@@ -647,11 +647,11 @@ func _check_late_peer_id() -> void:
 
 
 ## What a renderer adds to a predicted entity so a correction is eased: every one, and added
-## to what is still easing. Nothing else read [method DotNetPredictor.visual_offset] before
+## to what is still easing. Nothing else read [method GSNetPredictor.visual_offset] before
 ## a measured 30 cm correction jumped the eye in one frame.
 func _test_correction_offsets() -> void:
 	print("[correction offsets]")
-	var config := DotNetConfig.new()
+	var config := GSNetConfig.new()
 	config.enable_prediction = true
 	var dt := 1.0 / 60.0
 
@@ -678,13 +678,13 @@ func _test_correction_offsets() -> void:
 	client_entity.is_authoritative = false
 	var client_movement := client_entity.behaviours[0] as Movement
 	client_movement.moves_body = true
-	var buffer := DotNetInput.Buffer.new(config.input_history_ticks)
+	var buffer := GSNetInput.Buffer.new(config.input_history_ticks)
 	for input in inputs:
 		buffer.push(input)
 		client_movement._net_apply_input(input, input.tick)
 		client_movement._net_simulate(input.tick, dt)
 
-	var predictor := DotNetPredictor.new(config)
+	var predictor := GSNetPredictor.new(config)
 	predictor.fixed_now_ms = 1000
 
 	# Four millimetres: under the reporting epsilon, and the size a replay from a quantised
@@ -722,15 +722,15 @@ static func _worst_step_change(timeline: Array[float]) -> float:
 func _build_bump(_context: Dictionary, prefab: StringName, speed: float) -> Node:
 	var body := Node3D.new()
 	body.name = "Entity"
-	var identity := DotNetIdentity.new()
+	var identity := GSNetIdentity.new()
 	identity.name = "NetIdentity"
 	identity.prefab_id = prefab
 	identity.authority = (
-		DotNetIdentity.Authority.SERVER if prefab == &"pacer"
-		else DotNetIdentity.Authority.SHARED
+		GSNetIdentity.Authority.SERVER if prefab == &"pacer"
+		else GSNetIdentity.Authority.SHARED
 	)
 	body.add_child(identity)
-	var behaviour: DotNetBehaviour
+	var behaviour: GSNetBehaviour
 	if prefab == &"pacer":
 		var pacer := Pacer.new()
 		pacer.speed = speed
@@ -742,7 +742,7 @@ func _build_bump(_context: Dictionary, prefab: StringName, speed: float) -> Node
 	identity.entity = body
 	identity.behaviours = [behaviour]
 	behaviour.identity = identity
-	behaviour._bind(DotNetConfig.new())
+	behaviour._bind(GSNetConfig.new())
 	return body
 
 

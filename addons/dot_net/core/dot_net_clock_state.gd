@@ -1,6 +1,6 @@
 extends RefCounted
 
-## The constants and state of [DotNetClock], kept in a base so the file with the logic stays
+## The constants and state of [GSNetClock], kept in a base so the file with the logic stays
 ## readable. Nothing here is used on its own.
 
 const CHANNEL := "net.clock"
@@ -114,7 +114,7 @@ var _catch_up_count: int = 0
 # docs/timelines.md#the-input-lead-the-server-reports.
 
 ## How early (ticks) a command should reach the server, at the worst arrival of the last
-## [constant LEAD_WINDOW_SECONDS]. [code]DotNetConfig.input_lead_slack_ticks[/code].
+## [constant LEAD_WINDOW_SECONDS]. [code]GSNetConfig.input_lead_slack_ticks[/code].
 var lead_slack_ticks: int = 2
 
 ## Seconds of reports the lead is held at the most of: long enough to see a link's jitter many

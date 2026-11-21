@@ -10,24 +10,24 @@ func _bump_run(speed: float, loss: float, estimate: StringName) -> Dictionary:
 	var scope := "bump_%d_%d_%s" % [roundi(speed), roundi(loss * 100.0), estimate]
 	var dt := 1.0 / 60.0
 
-	var host := DotNetManager.new()
+	var host := GSNetManager.new()
 	host.name = "BumpServer_" + scope
 	host.is_server = true
 	host.service_scope = StringName(scope + "_server")
 	host.local_peer_id = 1
 	host.auto_tick = false
 	host.config_file = ""
-	host.config = DotNetConfig.new()
+	host.config = GSNetConfig.new()
 	add_child(host)
 
-	var guest := DotNetManager.new()
+	var guest := GSNetManager.new()
 	guest.name = "BumpClient_" + scope
 	guest.is_server = false
 	guest.service_scope = StringName(scope + "_client")
 	guest.local_peer_id = 2
 	guest.auto_tick = false
 	guest.config_file = ""
-	guest.config = DotNetConfig.new()
+	guest.config = GSNetConfig.new()
 	guest.config.input_margin_ticks = BUMP_LEAD
 	if estimate == &"extrapolated":
 		guest.config.remote_extrapolation_sec = BUMP_EXTRAPOLATE_SEC
@@ -41,7 +41,7 @@ func _bump_run(speed: float, loss: float, estimate: StringName) -> Dictionary:
 	draws.seed = 7001 + roundi(loss * 100.0)
 	var wire: Array[PackedByteArray] = []
 	host.send_fn = func(_peer: int, payload: PackedByteArray, d: int) -> void:
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			return
 		if draws.randf() < loss:
 			return
@@ -50,18 +50,18 @@ func _bump_run(speed: float, loss: float, estimate: StringName) -> Dictionary:
 	var _c := host.start()
 	var _d := guest.start()
 	host.add_peer(2)
-	for side: DotNetManager in [host, guest]:
+	for side: GSNetManager in [host, guest]:
 		side.spawner.register_factory(&"pacer", _build_bump.bind(&"pacer", speed))
 		side.spawner.register_factory(&"bumper", _build_bump.bind(&"bumper", speed))
 
 	# The bot first, so it is simulated before the player on the server; [method Pacer.at]
 	# makes the order not matter anyway.
-	var bot_s: DotNetIdentity = host.spawner.spawn(&"pacer", 1, Transform3D.IDENTITY, 0).value
-	var me_s: DotNetIdentity = host.spawner.spawn(&"bumper", 2, Transform3D.IDENTITY, 0).value
-	var bot_c: DotNetIdentity = guest.spawner.spawn_remote(
+	var bot_s: GSNetIdentity = host.spawner.spawn(&"pacer", 1, Transform3D.IDENTITY, 0).value
+	var me_s: GSNetIdentity = host.spawner.spawn(&"bumper", 2, Transform3D.IDENTITY, 0).value
+	var bot_c: GSNetIdentity = guest.spawner.spawn_remote(
 		&"pacer", bot_s.net_id, 1, Transform3D.IDENTITY, 0
 	).value
-	var me_c: DotNetIdentity = guest.spawner.spawn_remote(
+	var me_c: GSNetIdentity = guest.spawner.spawn_remote(
 		&"bumper", me_s.net_id, 2, Transform3D.IDENTITY, 0
 	).value
 	var pacer_s := bot_s.behaviours[0] as Pacer
@@ -86,7 +86,7 @@ func _bump_run(speed: float, loss: float, estimate: StringName) -> Dictionary:
 	return {"worst": gaps[0], "mean": gaps[1], "contact": pushed[0]}
 
 
-func _bump_drive(host: DotNetManager, guest: DotNetManager, bumper_s: Bumper, bumper_c: Bumper, wire: Array[PackedByteArray], server_at: Dictionary, client_at: Dictionary, dt: float) -> void:
+func _bump_drive(host: GSNetManager, guest: GSNetManager, bumper_s: Bumper, bumper_c: Bumper, wire: Array[PackedByteArray], server_at: Dictionary, client_at: Dictionary, dt: float) -> void:
 	for s in range(1, BUMP_TICKS + 1):
 		var c := s + BUMP_LEAD
 		var input := DemoInput.new()
@@ -114,7 +114,7 @@ func _bump_drive(host: DotNetManager, guest: DotNetManager, bumper_s: Bumper, bu
 		var _ack := host.receive_ack_payload(2, guest.encode_ack())
 
 
-func _bump_obstacle_estimate(estimate: StringName, bumper_c: Bumper, pacer_s: Pacer, pacer_c: Pacer, bot_c: DotNetIdentity, guest: DotNetManager, dt: float) -> void:
+func _bump_obstacle_estimate(estimate: StringName, bumper_c: Bumper, pacer_s: Pacer, pacer_c: Pacer, bot_c: GSNetIdentity, guest: GSNetManager, dt: float) -> void:
 	match estimate:
 		&"oracle":
 			bumper_c.obstacle_at = func(tick: int) -> Vector3:

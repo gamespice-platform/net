@@ -4,7 +4,7 @@ extends Node
 
 
 ## A movement component, of the kind a game would write.
-class Movement extends DotNetBehaviour:
+class Movement extends GSNetBehaviour:
 	var position: Vector3 = Vector3.ZERO
 	var velocity: Vector3 = Vector3.ZERO
 	var grounded: bool = true
@@ -14,7 +14,7 @@ class Movement extends DotNetBehaviour:
 	var current_input: DemoInput = null
 
 	## Whether a tick moves the entity's node too, as a game's does. The predictor measures
-	## a correction off the node ([method DotNetIdentity.world_position]); off by default
+	## a correction off the node ([method GSNetIdentity.world_position]); off by default
 	## so every section written before it sees the node it always saw.
 	var moves_body: bool = false
 
@@ -22,11 +22,11 @@ class Movement extends DotNetBehaviour:
 	## each tick and back out of them in [method _net_state_applied], as every game's
 	## controller does. Off by default: the sections before it simulate on the properties.
 	var keeps_own_state: bool = false
-	## False plays a dead player: DotNetBehaviour._net_predicts.
+	## False plays a dead player: GSNetBehaviour._net_predicts.
 	var predicts: bool = true
 	var _sim_position: Vector3 = Vector3.ZERO
 	var _sim_velocity: Vector3 = Vector3.ZERO
-	## Ticks simulated with [member DotNetBehaviour.net_replaying] set, and without.
+	## Ticks simulated with [member GSNetBehaviour.net_replaying] set, and without.
 	var replayed_ticks: int = 0
 	var fresh_ticks: int = 0
 
@@ -34,14 +34,14 @@ class Movement extends DotNetBehaviour:
 		return predicts
 
 	func _register_net_vars() -> void:
-		replicate(&"position", DotNetVar.Type.VECTOR3_POSITION) \
+		replicate(&"position", GSNetVar.Type.VECTOR3_POSITION) \
 			.interpolated().with_priority(5.0)
-		replicate(&"velocity", DotNetVar.Type.VECTOR3_VELOCITY) \
+		replicate(&"velocity", GSNetVar.Type.VECTOR3_VELOCITY) \
 			.with_epsilon(0.02)
-		replicate(&"grounded", DotNetVar.Type.BOOL)
-		replicate(&"health", DotNetVar.Type.UINT).bits(8).interpolated()
+		replicate(&"grounded", GSNetVar.Type.BOOL)
+		replicate(&"health", GSNetVar.Type.UINT).bits(8).interpolated()
 
-	func _net_apply_input(input: DotNetInput, _tick: int) -> void:
+	func _net_apply_input(input: GSNetInput, _tick: int) -> void:
 		current_input = input as DemoInput
 
 	## Deterministic given the same input and starting state — the property the
@@ -108,7 +108,7 @@ class EngineErrors extends Logger:
 
 ## A behaviour that records what the interpolator told it: the hook a game copies state from,
 ## which a snapshot-only hook would leave moving at the snapshot rate.
-class Interpolated extends DotNetBehaviour:
+class Interpolated extends GSNetBehaviour:
 	var position: Vector3 = Vector3.ZERO
 	var health: int = 100
 
@@ -118,8 +118,8 @@ class Interpolated extends DotNetBehaviour:
 	var last_tick: int = -1
 
 	func _register_net_vars() -> void:
-		replicate(&"position", DotNetVar.Type.VECTOR3_POSITION).interpolated()
-		replicate(&"health", DotNetVar.Type.UINT).bits(8)
+		replicate(&"position", GSNetVar.Type.VECTOR3_POSITION).interpolated()
+		replicate(&"health", GSNetVar.Type.UINT).bits(8)
 
 	func _net_interpolated(tick: int) -> void:
 		notifications += 1
@@ -130,8 +130,8 @@ class Interpolated extends DotNetBehaviour:
 ## A [Movement] that counts its own ticks and, once, unregisters another entity and takes it
 ## out of the tree from inside its `_net_simulate`: a round re-laying its map mid-tick (#30).
 class Unregisters extends Movement:
-	var host: DotNetManager = null
-	var victim: DotNetIdentity = null
+	var host: GSNetManager = null
+	var victim: GSNetIdentity = null
 	var simulated: int = 0
 
 	func _net_simulate(tick: int, delta: float) -> void:
@@ -166,9 +166,9 @@ class Rich extends Counted:
 
 	func _register_net_vars() -> void:
 		super._register_net_vars()
-		replicate(&"title", DotNetVar.Type.STRING)
-		replicate(&"blob", DotNetVar.Type.BYTES)
-		replicate(&"rated", DotNetVar.Type.UINT).bits(16).at_most(0.01)
+		replicate(&"title", GSNetVar.Type.STRING)
+		replicate(&"blob", GSNetVar.Type.BYTES)
+		replicate(&"rated", GSNetVar.Type.UINT).bits(16).at_most(0.01)
 
 
 ## A [Rich] with what only GDScript encodes for the native core (a custom codec that aligns, an
@@ -183,18 +183,18 @@ class Coded extends Rich:
 	func _register_net_vars() -> void:
 		super._register_net_vars()
 		replicate_custom(&"code", _write_code, _read_code)
-		replicate(&"turn", DotNetVar.Type.ANGLE).bits(10)
-		replicate(&"facing", DotNetVar.Type.QUATERNION)
-		replicate(&"aim", DotNetVar.Type.DIRECTION).bits(11).with_epsilon(0.01)
-		replicate(&"label", DotNetVar.Type.STRING)
+		replicate(&"turn", GSNetVar.Type.ANGLE).bits(10)
+		replicate(&"facing", GSNetVar.Type.QUATERNION)
+		replicate(&"aim", GSNetVar.Type.DIRECTION).bits(11).with_epsilon(0.01)
+		replicate(&"label", GSNetVar.Type.STRING)
 
-	func _write_code(w: DotNetWriter, value: Variant) -> void:
+	func _write_code(w: GSNetWriter, value: Variant) -> void:
 		var parts: Array = value
 		w.write_uint(parts.size(), 3)
 		for part: String in parts:
 			w.write_string(part)
 
-	func _read_code(r: DotNetReader) -> Variant:
+	func _read_code(r: GSNetReader) -> Variant:
 		var out: Array = []
 		for _i in r.read_uint(3):
 			out.append(r.read_string())
@@ -202,7 +202,7 @@ class Coded extends Rich:
 
 
 ## A [Counted] whose `_net_read_property` computes what it sends: the native core must read it
-## through GDScript ([member DotNetConfig.native_reads] reads a plain one itself).
+## through GDScript ([member GSNetConfig.native_reads] reads a plain one itself).
 class Computed extends Counted:
 	func _net_read_property(property: StringName) -> Variant:
 		if property == &"health":
@@ -213,7 +213,7 @@ class Computed extends Counted:
 ## A [Movement] that, on one tick and from inside its `_net_simulate`, spawns the first entity
 ## a peer owns: that peer's observer is registered after the tick's identity list was read.
 class SpawnsFirst extends Movement:
-	var host: DotNetManager = null
+	var host: GSNetManager = null
 	var peer: int = 0
 	var at_tick: int = 3
 	var spawned: bool = false
@@ -226,17 +226,17 @@ class SpawnsFirst extends Movement:
 
 
 ## A distance strategy subclassed without saying it is thread-safe.
-class PlainDistance extends DotNetInterestDistance:
+class PlainDistance extends GSNetInterestDistance:
 	pass
 
 
 ## Distance interest that records whether it was ever asked about an observer whose position
 ## was not frozen, from any thread: the worker's read the freeze exists to prevent.
-class FrozenProbe extends DotNetInterestDistance:
+class FrozenProbe extends GSNetInterestDistance:
 	var unfrozen_asks: int = 0
 	var asks_with_observer: int = 0
 
-	func _is_relevant(observer: DotNetIdentity, entity: DotNetIdentity, context: Dictionary) -> bool:
+	func _is_relevant(observer: GSNetIdentity, entity: GSNetIdentity, context: Dictionary) -> bool:
 		if observer != null:
 			asks_with_observer += 1
 			if not observer.is_position_frozen():
@@ -250,7 +250,7 @@ class FrozenProbe extends DotNetInterestDistance:
 ## A bot the server walks back and forth along x at a constant speed, reversing at once at
 ## each end: a pure function of the tick ([method at]), so the server's truth at any tick is
 ## known without asking the server. On a receiving client it records what it last heard.
-class Pacer extends DotNetBehaviour:
+class Pacer extends GSNetBehaviour:
 	const NEAR_X := 1.5
 	const FAR_X := 5.5
 
@@ -263,8 +263,8 @@ class Pacer extends DotNetBehaviour:
 	var heard_position: Vector3 = Vector3.ZERO
 
 	func _register_net_vars() -> void:
-		replicate(&"position", DotNetVar.Type.VECTOR3_POSITION).interpolated()
-		replicate(&"velocity", DotNetVar.Type.VECTOR3_VELOCITY)
+		replicate(&"position", GSNetVar.Type.VECTOR3_POSITION).interpolated()
+		replicate(&"velocity", GSNetVar.Type.VECTOR3_VELOCITY)
 
 	## Where the server has it after simulating [param tick]: from the far end toward the
 	## player, back, and again.
@@ -289,7 +289,7 @@ class Pacer extends DotNetBehaviour:
 ## A predicted player that walks +x into a [Pacer] and is pushed back along x: the smallest
 ## simulation where a client predicts a bump against something it does not predict.
 ## [member obstacle_at] is the bot's position per tick (`Vector3.INF` for nothing).
-class Bumper extends DotNetBehaviour:
+class Bumper extends GSNetBehaviour:
 	## Two capsule radii, 0.35 m each, as GameSpice Player Controller's standing hull.
 	const APART := 0.7
 	const WALK := 3.0
@@ -300,10 +300,10 @@ class Bumper extends DotNetBehaviour:
 	var obstacle_at: Callable = Callable()
 
 	func _register_net_vars() -> void:
-		replicate(&"position", DotNetVar.Type.VECTOR3_POSITION).interpolated()
-		replicate(&"velocity", DotNetVar.Type.VECTOR3_VELOCITY)
+		replicate(&"position", GSNetVar.Type.VECTOR3_POSITION).interpolated()
+		replicate(&"velocity", GSNetVar.Type.VECTOR3_VELOCITY)
 
-	func _net_apply_input(input: DotNetInput, _tick: int) -> void:
+	func _net_apply_input(input: GSNetInput, _tick: int) -> void:
 		current_input = input as DemoInput
 
 	func _net_simulate(tick: int, delta: float) -> void:
@@ -322,7 +322,7 @@ class Bumper extends DotNetBehaviour:
 
 
 ## Relevant unless excluded, by net id. What "it walked out of view" is to a test.
-class ExcludeInterest extends DotNetInterest:
+class ExcludeInterest extends GSNetInterest:
 	var excluded := {}
 
 	func _init() -> void:
@@ -330,24 +330,24 @@ class ExcludeInterest extends DotNetInterest:
 		evaluation_interval_sec = 0.0
 
 	func _is_relevant(
-		_observer: DotNetIdentity,
-		entity: DotNetIdentity,
+		_observer: GSNetIdentity,
+		entity: GSNetIdentity,
 		_context: Dictionary
 	) -> bool:
 		return not excluded.has(entity.net_id)
 
 
 ## A player's controls.
-class DemoInput extends DotNetInput:
+class DemoInput extends GSNetInput:
 	var move: Vector2 = Vector2.ZERO
 	var fire: bool = false
 
-	func _write(w: DotNetWriter) -> void:
+	func _write(w: GSNetWriter) -> void:
 		w.write_float_range(move.x, -1.0, 1.0, 10)
 		w.write_float_range(move.y, -1.0, 1.0, 10)
 		w.write_bool(fire)
 
-	func _read(r: DotNetReader) -> void:
+	func _read(r: GSNetReader) -> void:
 		move.x = r.read_float_range(-1.0, 1.0, 10)
 		move.y = r.read_float_range(-1.0, 1.0, 10)
 		fire = r.read_bool()
@@ -362,7 +362,7 @@ class DemoInput extends DotNetInput:
 		fire = false
 
 
-## A command-shaped member, as DotFpsCommand is in the games.
+## A command-shaped member, as GSFpsCommand is in the games.
 class DemoCommand extends RefCounted:
 	var move := Vector2.ONE
 	var yaw := 1.5
@@ -374,91 +374,91 @@ class DemoCommand extends RefCounted:
 
 
 ## An input with no _neutralise of its own: only members.
-class MemberInput extends DotNetInput:
+class MemberInput extends GSNetInput:
 	var cmd := DemoCommand.new()
 	var plain := 3
 
-	func _write(_w: DotNetWriter) -> void:
+	func _write(_w: GSNetWriter) -> void:
 		pass
 
-	func _read(_r: DotNetReader) -> void:
+	func _read(_r: GSNetReader) -> void:
 		pass
 
 
 ## A game's own message type.
-class ChatMessage extends DotNetMessage:
+class ChatMessage extends GSNetMessage:
 	var text: String = ""
 
 	func _type_name() -> StringName:
 		return &"demo.chat"
 
-	func _write(w: DotNetWriter) -> void:
+	func _write(w: GSNetWriter) -> void:
 		w.write_string(text, 128)
 
-	func _read(r: DotNetReader) -> void:
+	func _read(r: GSNetReader) -> void:
 		text = r.read_string(128)
 
-	func _validate() -> DotResult:
+	func _validate() -> GSResult:
 		if text.strip_edges() == "":
-			return DotResult.fail(DotError.CODE_INVALID, "Empty chat message.")
-		return DotResult.success(true)
+			return GSResult.fail(GSError.CODE_INVALID, "Empty chat message.")
+		return GSResult.success(true)
 
 
 ## A server-to-client-only message, to prove direction is enforced.
-class ServerNotice extends DotNetMessage:
+class ServerNotice extends GSNetMessage:
 	var notice: String = ""
 
 	func _type_name() -> StringName:
 		return &"demo.notice"
 
-	func _write(w: DotNetWriter) -> void:
+	func _write(w: GSNetWriter) -> void:
 		w.write_string(notice, 128)
 
-	func _read(r: DotNetReader) -> void:
+	func _read(r: GSNetReader) -> void:
 		notice = r.read_string(128)
 
 
 ## [code]demo.chat[/code] one build later: a field appended, read behind has_more().
-class ChatMessageV2 extends DotNetMessage:
+class ChatMessageV2 extends GSNetMessage:
 	var text: String = ""
 	var colour: int = 7
 
 	func _type_name() -> StringName:
 		return &"demo.chat"
 
-	func _write(w: DotNetWriter) -> void:
+	func _write(w: GSNetWriter) -> void:
 		w.write_string(text, 128)
 		w.write_uint(colour, 8)
 
-	func _read(r: DotNetReader) -> void:
+	func _read(r: GSNetReader) -> void:
 		text = r.read_string(128)
 		if r.has_more():
 			colour = r.read_uint(8)
 
 
 ## A type one end has and the other does not, which a peer can do without.
-class ExtraMessage extends DotNetMessage:
+class ExtraMessage extends GSNetMessage:
 	var value: int = 0
 
 	func _type_name() -> StringName:
 		return &"demo.extra"
 
-	func _write(w: DotNetWriter) -> void:
+	func _write(w: GSNetWriter) -> void:
 		w.write_uint(value, 16)
 
-	func _read(r: DotNetReader) -> void:
+	func _read(r: GSNetReader) -> void:
 		value = r.read_uint(16)
 
 
 ## A type one end has and REQUIRES, which a peer cannot do without.
-class VitalMessage extends DotNetMessage:
+class VitalMessage extends GSNetMessage:
 	func _type_name() -> StringName:
 		return &"demo.vital"
 
-	func _write(_w: DotNetWriter) -> void:
+	func _write(_w: GSNetWriter) -> void:
 		pass
 
-	func _read(_r: DotNetReader) -> void:
+	func _read(_r: GSNetReader) -> void:
 		pass
 
 
@@ -472,8 +472,8 @@ var _failed := 0
 var _sections_entered := 0
 var _sections_completed := 0
 
-var server: DotNetManager
-var client: DotNetManager
+var server: GSNetManager
+var client: GSNetManager
 
 ## Payloads in flight, so latency and loss can be simulated.
 var _in_flight: Array[Dictionary] = []
@@ -482,28 +482,28 @@ var _rng := RandomNumberGenerator.new()
 
 
 ## Observers-only state, as a game's alive/health pair: set once, never changing again.
-class ObserverVars extends DotNetBehaviour:
+class ObserverVars extends GSNetBehaviour:
 	var alive: bool = false
 	var hp: int = 0
 	var armour: int = 0
 	var wobble: int = 0
 
 	func _register_net_vars() -> void:
-		replicate(&"alive", DotNetVar.Type.BOOL).to_observers_only()
-		replicate(&"hp", DotNetVar.Type.UINT).bits(8).to_observers_only()
-		replicate(&"armour", DotNetVar.Type.UINT).bits(8)
-		replicate(&"wobble", DotNetVar.Type.UINT).bits(8)
+		replicate(&"alive", GSNetVar.Type.BOOL).to_observers_only()
+		replicate(&"hp", GSNetVar.Type.UINT).bits(8).to_observers_only()
+		replicate(&"armour", GSNetVar.Type.UINT).bits(8)
+		replicate(&"wobble", GSNetVar.Type.UINT).bits(8)
 
 
 ## A strategy defined entirely outside GameSpice Net.
-class TagInterest extends DotNetInterest:
+class TagInterest extends GSNetInterest:
 	func _init() -> void:
 		strategy_name = "objectives-only"
 		evaluation_interval_sec = 0.0
 
 	func _is_relevant(
-		_observer: DotNetIdentity,
-		entity: DotNetIdentity,
+		_observer: GSNetIdentity,
+		entity: GSNetIdentity,
 		_context: Dictionary
 	) -> bool:
 		return entity.has_tag("objective")
@@ -514,7 +514,7 @@ class TagInterest extends DotNetInterest:
 ## A behaviour with nothing that keeps its dirty sets apart (no epsilon, no rate limit), and
 ## one of everything else that decides them: an owner-only, an observers-only and a
 ## spawn-only property, and a string, whose encoding depends on the bit it starts at.
-class Sharing extends DotNetBehaviour:
+class Sharing extends GSNetBehaviour:
 	var position: Vector3 = Vector3.ZERO
 	var health: int = 100
 	var tag: String = ""
@@ -523,12 +523,12 @@ class Sharing extends DotNetBehaviour:
 	var kind: int = 1
 
 	func _register_net_vars() -> void:
-		replicate(&"position", DotNetVar.Type.VECTOR3_POSITION).interpolated()
-		replicate(&"health", DotNetVar.Type.UINT).bits(8)
-		replicate(&"tag", DotNetVar.Type.STRING)
-		replicate(&"secret", DotNetVar.Type.BOOL).to_owner_only()
-		replicate(&"seen", DotNetVar.Type.UINT).bits(4).to_observers_only()
-		replicate(&"kind", DotNetVar.Type.UINT).bits(4).once()
+		replicate(&"position", GSNetVar.Type.VECTOR3_POSITION).interpolated()
+		replicate(&"health", GSNetVar.Type.UINT).bits(8)
+		replicate(&"tag", GSNetVar.Type.STRING)
+		replicate(&"secret", GSNetVar.Type.BOOL).to_owner_only()
+		replicate(&"seen", GSNetVar.Type.UINT).bits(4).to_observers_only()
+		replicate(&"kind", GSNetVar.Type.UINT).bits(4).once()
 
 
 var _share_rng := RandomNumberGenerator.new()
@@ -553,7 +553,7 @@ const BUMP_ESTIMATES: Array[StringName] = [
 ]
 
 
-## [member DotNetConfig.reconcile_once_per_frame]: snapshots that arrive together reconcile
+## [member GSNetConfig.reconcile_once_per_frame]: snapshots that arrive together reconcile
 ## once against the newest and land where reconciling each would. Two clients read the same
 ## bursts of [constant BURST]; B must replay once a burst and end each burst where A is.
 const BURST := 4
@@ -577,13 +577,13 @@ func _build_counted(_context: Dictionary, computed: bool = false) -> Node:
 	body.add_child(counted)
 	identity.behaviours = [counted]
 	counted.identity = identity
-	counted._bind(DotNetConfig.new())
+	counted._bind(GSNetConfig.new())
 	return body
 
 
 func _build_rich(context: Dictionary, coded: bool = false) -> Node:
 	var body := _build_counted(context)
-	var identity := body.get_node("NetIdentity") as DotNetIdentity
+	var identity := body.get_node("NetIdentity") as GSNetIdentity
 	var old := identity.behaviours[0]
 	body.remove_child(old)
 	old.free()
@@ -592,7 +592,7 @@ func _build_rich(context: Dictionary, coded: bool = false) -> Node:
 	body.add_child(rich)
 	identity.behaviours = [rich]
 	rich.identity = identity
-	rich._bind(DotNetConfig.new())
+	rich._bind(GSNetConfig.new())
 	return body
 
 
@@ -604,19 +604,19 @@ func _build_mirror(_context: Dictionary) -> Node:
 	identity.get_parent().add_child(vars)
 	identity.behaviours.append(vars)
 	vars.identity = identity
-	vars._bind(DotNetConfig.new())
+	vars._bind(GSNetConfig.new())
 	return identity.get_parent()
 
 
 ## A manager with a config of its own and no tick loop, not yet in the tree.
-func _bare_manager(as_server: bool, peer_id: int) -> DotNetManager:
-	var m := DotNetManager.new()
+func _bare_manager(as_server: bool, peer_id: int) -> GSNetManager:
+	var m := GSNetManager.new()
 	m.is_server = as_server
 	m.service_scope = &"server" if as_server else &"client"
 	m.local_peer_id = peer_id
 	m.auto_tick = false
 	m.config_file = ""
-	m.config = DotNetConfig.new()
+	m.config = GSNetConfig.new()
 	return m
 
 
@@ -632,14 +632,14 @@ var _pool_reused: int = 0
 var _pool_context: Dictionary = {}
 
 
-## A bare networked entity: Node3D root, DotNetIdentity child. No behaviour, which would be
+## A bare networked entity: Node3D root, GSNetIdentity child. No behaviour, which would be
 ## an inner class of this script that a PackedScene should not have to carry.
 func _build_entity_node() -> Node3D:
 	var body := Node3D.new()
 	body.name = "PooledEntity"
-	var identity := DotNetIdentity.new()
+	var identity := GSNetIdentity.new()
 	identity.name = "NetIdentity"
-	identity.authority = DotNetIdentity.Authority.SERVER
+	identity.authority = GSNetIdentity.Authority.SERVER
 	body.add_child(identity)
 	identity.owner = body
 	return body
@@ -647,15 +647,15 @@ func _build_entity_node() -> Node3D:
 
 ## Packs one into a PackedScene, with or without the identity. Packing rather than preloading
 ## keeps the demo one file and exercises register_prefab's fallback check (a node from
-## DotNetIdentity.new() saves its base type and a script property).
+## GSNetIdentity.new() saves its base type and a script property).
 func _pack_entity(with_identity: bool) -> PackedScene:
 	var body := Node3D.new()
 	body.name = "Entity"
 
 	if with_identity:
-		var identity := DotNetIdentity.new()
+		var identity := GSNetIdentity.new()
 		identity.name = "NetIdentity"
-		identity.authority = DotNetIdentity.Authority.SERVER
+		identity.authority = GSNetIdentity.Authority.SERVER
 		body.add_child(identity)
 		identity.owner = body
 
@@ -666,15 +666,15 @@ func _pack_entity(with_identity: bool) -> PackedScene:
 
 
 ## Builds an entity: a Node3D with an identity and a movement behaviour.
-func _make_entity(prefab: StringName, owner_peer: int) -> DotNetIdentity:
+func _make_entity(prefab: StringName, owner_peer: int) -> GSNetIdentity:
 	var body := Node3D.new()
 	body.name = "Entity"
 
-	var identity := DotNetIdentity.new()
+	var identity := GSNetIdentity.new()
 	identity.name = "NetIdentity"
 	identity.prefab_id = prefab
 	identity.owner_peer_id = owner_peer
-	identity.authority = DotNetIdentity.Authority.SHARED
+	identity.authority = GSNetIdentity.Authority.SHARED
 	if prefab == &"objective":
 		identity.interest_tags = PackedStringArray(["objective"])
 	body.add_child(identity)
@@ -688,18 +688,18 @@ func _make_entity(prefab: StringName, owner_peer: int) -> DotNetIdentity:
 	identity.entity = body
 	identity.behaviours = [movement]
 	movement.identity = identity
-	movement._bind(DotNetConfig.new())
+	movement._bind(GSNetConfig.new())
 
 	return identity
 
 
 ## Puts a test entity's body in the scene tree and returns the identity.
-func _in_tree(identity: DotNetIdentity) -> DotNetIdentity:
+func _in_tree(identity: GSNetIdentity) -> GSNetIdentity:
 	add_child(identity.get_parent())
 	return identity
 
 
-func _out_of_tree(identity: DotNetIdentity) -> void:
+func _out_of_tree(identity: GSNetIdentity) -> void:
 	var body := identity.get_parent()
 	remove_child(body)
 	body.free()
@@ -716,7 +716,7 @@ func _check(what: String, passed: bool) -> void:
 
 ## Stops, detaches and frees managers a section built by hand.
 func _free_managers(managers: Array) -> void:
-	for manager: DotNetManager in managers:
+	for manager: GSNetManager in managers:
 		manager.stop()
 		remove_child(manager)
 		manager.free()

@@ -1,7 +1,7 @@
-class_name DotNetReader
+class_name GSNetReader
 extends RefCounted
 
-## Reads what [DotNetWriter] wrote. Every method mirrors one there. [b]Reading is the untrusted
+## Reads what [GSNetWriter] wrote. Every method mirrors one there. [b]Reading is the untrusted
 ## side.[/b] Every buffer this touches came off the network, so it must survive being truncated,
 ## padded, or filled with noise without crashing or looping.
 
@@ -37,7 +37,7 @@ func _end() -> int:
 ## Reads [param bits] bits. Returns 0 and sets [member exhausted] past the end.
 func read_bits(bits: int) -> int:
 	if bits <= 0 or bits > 64:
-		push_error("DotNetReader.read_bits: bits must be 1..64, got %d" % bits)
+		push_error("GSNetReader.read_bits: bits must be 1..64, got %d" % bits)
 		return 0
 
 	# Once exhausted, every subsequent read returns zero rather than resuming from whatever bits happen
@@ -137,7 +137,7 @@ func read_svarint() -> int:
 
 func read_float_range(min_value: float, max_value: float, bits: int) -> float:
 	if max_value <= min_value:
-		push_error("DotNetReader.read_float_range: max must exceed min")
+		push_error("GSNetReader.read_float_range: max must exceed min")
 		return min_value
 
 	var quantised := read_bits(bits)
@@ -312,14 +312,14 @@ func bytes_remaining() -> int:
 
 ## A reader over the next [param bits] bits, byte-aligned first, and this one moved past them. Null,
 ## with [member exhausted] set, when fewer are there.
-func take_bits(bits: int) -> DotNetReader:
+func take_bits(bits: int) -> GSNetReader:
 	align()
 	if exhausted or bits < 0 or bits > bits_remaining():
 		exhausted = true
 		return null
 	var start := _bit_pos >> 3
 	var count := (bits + 7) >> 3
-	var sub := DotNetReader.new(_bytes.slice(start, start + count))
+	var sub := GSNetReader.new(_bytes.slice(start, start + count))
 	sub.limit_bits(bits)
 	_bit_pos = (start + count) << 3
 	return sub
@@ -354,8 +354,8 @@ func ok() -> bool:
 	return not exhausted
 
 
-# The same as [method DotNetWriter._mask] and [method DotNetWriter.bits_for_step]. Kept here so this
-# file does not name DotNetWriter, which names this one back (the two parsers would never be freed).
+# The same as [method GSNetWriter._mask] and [method GSNetWriter.bits_for_step]. Kept here so this
+# file does not name GSNetWriter, which names this one back (the two parsers would never be freed).
 static func _mask(bits: int) -> int:
 	if bits >= 64:
 		return -1

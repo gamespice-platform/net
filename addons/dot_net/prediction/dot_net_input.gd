@@ -1,5 +1,5 @@
 @tool
-class_name DotNetInput
+class_name GSNetInput
 extends RefCounted
 
 ## One tick's input from one player. Subclass it for your game's controls. [b]Inputs, not state.[/b] A
@@ -13,12 +13,12 @@ var tick: int = 0
 var delta: float = 0.0
 
 
-func _write(_writer: DotNetWriter) -> void:
-	push_error("DotNetInput._write() was not overridden.")
+func _write(_writer: GSNetWriter) -> void:
+	push_error("GSNetInput._write() was not overridden.")
 
 
-func _read(_reader: DotNetReader) -> void:
-	push_error("DotNetInput._read() was not overridden.")
+func _read(_reader: GSNetReader) -> void:
+	push_error("GSNetInput._read() was not overridden.")
 
 
 ## Clamps fields into legal ranges. Called on the server after decoding. Override for anything a client
@@ -29,7 +29,7 @@ func _sanitise() -> void:
 
 ## Whether two inputs are identical, for redundancy suppression. Override when your input has fields
 ## worth comparing.
-func _equals(_other: DotNetInput) -> bool:
+func _equals(_other: GSNetInput) -> bool:
 	return false
 
 
@@ -45,7 +45,7 @@ func _neutralise() -> void:
 			(member as Object).call(&"neutralise")
 
 
-func write(writer: DotNetWriter) -> void:
+func write(writer: GSNetWriter) -> void:
 	writer.write_uint(tick, 32)
 	# Quantised: a delta outside this range is not a real frame time, and accepting
 	# one lets a client claim a 10-second step and move accordingly.
@@ -53,7 +53,7 @@ func write(writer: DotNetWriter) -> void:
 	_write(writer)
 
 
-func read(reader: DotNetReader) -> void:
+func read(reader: GSNetReader) -> void:
 	tick = reader.read_uint(32)
 	delta = reader.read_float_range(0.0, 0.5, 12)
 	_read(reader)
@@ -72,30 +72,30 @@ func sanitise(tick_rate: int) -> void:
 ## wire format. The server simulates on the rounded command; simulating on the raw one drifts on
 ## every turning tick.
 func round_trip() -> void:
-	var writer := DotNetWriter.new(32)
+	var writer := GSNetWriter.new(32)
 	write(writer)
-	read(DotNetReader.new(writer.to_bytes()))
+	read(GSNetReader.new(writer.to_bytes()))
 
 
 ## A copy of this input with [method _neutralise] applied, for [param p_tick].
-func neutralised(p_tick: int) -> DotNetInput:
-	var copy: DotNetInput = (get_script() as Script).new()
-	var writer := DotNetWriter.new(32)
+func neutralised(p_tick: int) -> GSNetInput:
+	var copy: GSNetInput = (get_script() as Script).new()
+	var writer := GSNetWriter.new(32)
 	write(writer)
-	copy.read(DotNetReader.new(writer.to_bytes()))
+	copy.read(GSNetReader.new(writer.to_bytes()))
 	copy.tick = p_tick
 	copy._neutralise()
 	return copy
 
 
-func equals(other: DotNetInput) -> bool:
+func equals(other: GSNetInput) -> bool:
 	if other == null:
 		return false
 	return _equals(other)
 
 
 func _to_string() -> String:
-	return "DotNetInput(tick %d)" % tick
+	return "GSNetInput(tick %d)" % tick
 
 
 ## Most inputs one batch carries. Four bits of count.
@@ -103,14 +103,14 @@ const BATCH_MAX := 15
 
 ## Writes [param inputs] (oldest first, ticks ascending) as one batch: a count, the first tick in full
 ## and each later one as the step from the one before, then each input's delta and fields.
-static func write_batch(writer: DotNetWriter, inputs: Array) -> void:
+static func write_batch(writer: GSNetWriter, inputs: Array) -> void:
 	var count := mini(inputs.size(), BATCH_MAX)
 	var first := inputs.size() - count
 	writer.write_uint(count, 4)
 
 	var previous := -1
 	for i in range(first, inputs.size()):
-		var input: DotNetInput = inputs[i]
+		var input: GSNetInput = inputs[i]
 		if previous < 0:
 			writer.write_uint(input.tick, 32)
 		else:
@@ -123,8 +123,8 @@ static func write_batch(writer: DotNetWriter, inputs: Array) -> void:
 ## Reads what [method write_batch] wrote, building each input with [param make] (a [Callable] returning
 ## a new instance of the game's subclass). Oldest first. Untrusted: the count is four bits, a tick step
 ## is at least one, and a batch that runs out part-way returns what was read whole before it.
-static func read_batch(reader: DotNetReader, make: Callable) -> Array[DotNetInput]:
-	var out: Array[DotNetInput] = []
+static func read_batch(reader: GSNetReader, make: Callable) -> Array[GSNetInput]:
+	var out: Array[GSNetInput] = []
 	var count := reader.read_uint(4)
 	var tick := -1
 
@@ -134,7 +134,7 @@ static func read_batch(reader: DotNetReader, make: Callable) -> Array[DotNetInpu
 		else:
 			tick += maxi(1, reader.read_varint())
 
-		var input: DotNetInput = make.call()
+		var input: GSNetInput = make.call()
 		input.tick = tick
 		input.delta = reader.read_float_range(0.0, 0.5, 12)
 		input._read(reader)
@@ -151,7 +151,7 @@ static func read_batch(reader: DotNetReader, make: Callable) -> Array[DotNetInpu
 ## for reconciliation.
 class Buffer extends RefCounted:
 	## Inputs held, oldest first.
-	var _inputs: Array[DotNetInput] = []
+	var _inputs: Array[GSNetInput] = []
 
 	## Most inputs kept.
 	var capacity: int = 120
@@ -181,30 +181,30 @@ class Buffer extends RefCounted:
 
 	## Client side: the newest input [method acknowledge] dropped. The server ran a hole right
 	## after it on this command, so a replay starting inside the hole needs it still.
-	var _acknowledged: DotNetInput = null
+	var _acknowledged: GSNetInput = null
 
 	func _init(p_capacity: int = 120) -> void:
 		capacity = p_capacity
 
 	## Adds an input, keeping the buffer ordered and bounded. A server reading a packet of
 	## resent inputs calls [method push_batch], which measures the arrival lead on its newest only.
-	func push(input: DotNetInput) -> DotResult:
+	func push(input: GSNetInput) -> GSResult:
 		return _push(input, true)
 
-	## Adds one packet's inputs, oldest first as [method DotNetInput.read_batch] returns them.
+	## Adds one packet's inputs, oldest first as [method GSNetInput.read_batch] returns them.
 	## Copies of ticks already simulated are skipped, not counted late; the packet's own (newest)
 	## input is always pushed, and is the only one the arrival lead is measured on.
-	func push_batch(inputs: Array) -> DotResult:
-		var pushed := DotResult.success(false)
+	func push_batch(inputs: Array) -> GSResult:
+		var pushed := GSResult.success(false)
 		var last := inputs.size() - 1
 		for i in inputs.size():
-			var input := inputs[i] as DotNetInput
+			var input := inputs[i] as GSNetInput
 			if input == null or (i != last and input.tick <= _last_consumed_tick):
 				continue
 			pushed = _push(input, i == last)
 		return pushed
 
-	func _push(input: DotNetInput, measure: bool) -> DotResult:
+	func _push(input: GSNetInput, measure: bool) -> GSResult:
 		# Measured only for an input newer than any before it, and by push_batch only on a packet's
 		# newest: that one came as late as the packet did. An older one seen first here was in a
 		# lost packet, and its lateness is the loss, not a lead the link needs.
@@ -220,8 +220,8 @@ class Buffer extends RefCounted:
 			# The tick it applies to is already simulated. Applying it now would
 			# rewrite history the server has already sent to everyone.
 			late_count += 1
-			return DotResult.fail(
-				DotError.CODE_STATE,
+			return GSResult.fail(
+				GSError.CODE_STATE,
 				"Input arrived too late.",
 				"tick %d, already at %d" % [input.tick, _last_consumed_tick]
 			)
@@ -234,14 +234,14 @@ class Buffer extends RefCounted:
 			# Clients resend recent inputs so a dropped packet does not cost a tick;
 			# duplicates are expected and cheap to ignore.
 			duplicate_count += 1
-			return DotResult.success(false)
+			return GSResult.success(false)
 
 		_inputs.insert(index, input)
 
 		while _inputs.size() > capacity:
 			_inputs.pop_front()
 
-		return DotResult.success(true)
+		return GSResult.success(true)
 
 	## The newest tick handed to the simulation, or -1. A server reading a batch of
 	## resent inputs skips the copies at or before it rather than counting each as late.
@@ -249,9 +249,9 @@ class Buffer extends RefCounted:
 		return _last_consumed_tick
 
 	## Up to [param count] inputs at or before [param upto_tick], oldest first: what a
-	## client resends with every packet. See [method DotNetInput.write_batch].
-	func recent(count: int, upto_tick: int) -> Array[DotNetInput]:
-		var out: Array[DotNetInput] = []
+	## client resends with every packet. See [method GSNetInput.write_batch].
+	func recent(count: int, upto_tick: int) -> Array[GSNetInput]:
+		var out: Array[GSNetInput] = []
 		var i := _inputs.size() - 1
 		while i >= 0 and out.size() < count:
 			if _inputs[i].tick <= upto_tick:
@@ -260,7 +260,7 @@ class Buffer extends RefCounted:
 		return out
 
 	## Takes the input for a tick, or null.
-	func take(tick: int) -> DotNetInput:
+	func take(tick: int) -> GSNetInput:
 		for i in range(_inputs.size()):
 			if _inputs[i].tick == tick:
 				var input := _inputs[i]
@@ -274,15 +274,15 @@ class Buffer extends RefCounted:
 		return null
 
 	## The input for a tick without removing it. For client-side replay.
-	func peek(tick: int) -> DotNetInput:
+	func peek(tick: int) -> GSNetInput:
 		for input in _inputs:
 			if input.tick == tick:
 				return input
 		return null
 
 	## The newest input for a tick before [param tick], or null when there is none.
-	func latest_before(tick: int) -> DotNetInput:
-		var out: DotNetInput = null
+	func latest_before(tick: int) -> GSNetInput:
+		var out: GSNetInput = null
 		if _acknowledged != null and _acknowledged.tick < tick:
 			out = _acknowledged
 		for input in _inputs:
@@ -292,8 +292,8 @@ class Buffer extends RefCounted:
 		return out
 
 	## Inputs from [param from_tick] onward, in order. The replay set.
-	func since(from_tick: int) -> Array[DotNetInput]:
-		var out: Array[DotNetInput] = []
+	func since(from_tick: int) -> Array[GSNetInput]:
+		var out: Array[GSNetInput] = []
 		for input in _inputs:
 			if input.tick >= from_tick:
 				out.append(input)
@@ -314,10 +314,10 @@ class Buffer extends RefCounted:
 	func note_starved() -> void:
 		starved_count += 1
 
-	func newest() -> DotNetInput:
+	func newest() -> GSNetInput:
 		return _inputs[_inputs.size() - 1] if not _inputs.is_empty() else null
 
-	func oldest() -> DotNetInput:
+	func oldest() -> GSNetInput:
 		return _inputs[0] if not _inputs.is_empty() else null
 
 	func size() -> int:
@@ -336,7 +336,7 @@ class Buffer extends RefCounted:
 
 	## The least arrival lead since the last call, as [code]Vector2i(lead, input_tick)[/code],
 	## and starts the next measurement; [code]Vector2i(LEAD_NONE, -1)[/code] when no new input
-	## has arrived since. Server side; [DotNetManager] sends it to a client that reads it.
+	## has arrived since. Server side; [GSNetManager] sends it to a client that reads it.
 	func take_lead_sample() -> Vector2i:
 		var out := Vector2i(_lead_min, _lead_input_tick)
 		_lead_min = LEAD_NONE

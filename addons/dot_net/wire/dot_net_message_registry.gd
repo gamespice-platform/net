@@ -1,4 +1,4 @@
-class_name DotNetMessageRegistry
+class_name GSNetMessageRegistry
 extends RefCounted
 
 ## Maps message types to wire ids, and routes decoded messages to handlers. [b]The extension point most
@@ -41,7 +41,7 @@ signal peer_adopted(peer_id: int)
 
 ## A peer's schema table arrived and cannot work with this one. [param error] is
 ## CODE_VERSION, with a message a player can read and the types in the detail.
-signal peer_refused(peer_id: int, error: DotError)
+signal peer_refused(peer_id: int, error: GSError)
 
 ## name -> {id, script, delivery, direction, handler, priority, required}
 var _by_name: Dictionary = {}
@@ -55,7 +55,7 @@ var _schema_hash: String = ""
 ## peer_id -> {"names": {name: {required, direction, delivery}}, "blocked": {id: true}}
 var _peers: Dictionary = {}
 
-## peer_id -> DotError, for a peer whose table was refused. Nothing it sends is decoded.
+## peer_id -> GSError, for a peer whose table was refused. Nothing it sends is decoded.
 var _refused: Dictionary = {}
 
 ## Messages skipped because this end did not have their type -- the unknown traffic a
@@ -69,47 +69,47 @@ var _skipped_noted: Dictionary = {}
 ## Derived from the name alone, so a message's bytes are its only contract: append fields, never
 ## reorder or retype one.
 static func wire_id_for(type_name: StringName) -> int:
-	var digest := DotHash.sha256_text(String(type_name))
+	var digest := GSHash.sha256_text(String(type_name))
 	return digest.substr(0, 8).hex_to_int()
 
 
-## Registers a message type. [param script] must extend [DotNetMessage].
+## Registers a message type. [param script] must extend [GSNetMessage].
 func register(
 	type_name: StringName,
 	script: GDScript,
-	delivery: DotNetMessage.Delivery = DotNetMessage.Delivery.RELIABLE,
-	direction: DotNetMessage.Direction = DotNetMessage.Direction.BOTH,
+	delivery: GSNetMessage.Delivery = GSNetMessage.Delivery.RELIABLE,
+	direction: GSNetMessage.Direction = GSNetMessage.Direction.BOTH,
 	required: bool = true
-) -> DotResult:
+) -> GSResult:
 	if _sealed:
-		return DotResult.fail(
-			DotError.CODE_STATE,
+		return GSResult.fail(
+			GSError.CODE_STATE,
 			"The message registry is sealed.",
 			"register every type before connecting; a type added after the schema was "
 			+ "sent to peers is one they were told this end does not have"
 		)
 
 	if type_name == &"":
-		return DotResult.fail(
-			DotError.CODE_INVALID, "A message type needs a name."
+		return GSResult.fail(
+			GSError.CODE_INVALID, "A message type needs a name."
 		)
 
 	if String(type_name).to_utf8_buffer().size() > MAX_NAME_BYTES:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"Message type name '%s' is too long." % type_name,
 			"%d bytes at most" % MAX_NAME_BYTES
 		)
 
 	if _by_name.has(type_name):
-		return DotResult.fail(
-			DotError.CODE_STATE,
+		return GSResult.fail(
+			GSError.CODE_STATE,
 			"Message type '%s' is already registered." % type_name
 		)
 
 	if _by_name.size() >= MAX_TYPES:
-		return DotResult.fail(
-			DotError.CODE_STATE,
+		return GSResult.fail(
+			GSError.CODE_STATE,
 			"Too many message types (limit %d)." % MAX_TYPES
 		)
 
@@ -119,8 +119,8 @@ func register(
 	# chance, and if it does it must be a refusal at startup, where somebody can rename
 	# one of them, rather than two types silently decoding as each other.
 	if id == SCHEMA_ID or _by_id.has(id):
-		return DotResult.fail(
-			DotError.CODE_CONFLICT,
+		return GSResult.fail(
+			GSError.CODE_CONFLICT,
 			"Message type '%s' collides with another type's wire id." % type_name,
 			"id %d is %s; rename one of them" % [
 				id, "reserved for the schema table" if id == SCHEMA_ID else "'%s'" % _by_id[id]
@@ -130,16 +130,16 @@ func register(
 	# Instantiating once at registration proves the script is usable and that its
 	# declared name matches, rather than discovering it on the first send.
 	var probe: Variant = script.new()
-	if not (probe is DotNetMessage):
-		return DotResult.fail(
-			DotError.CODE_INVALID,
-			"'%s' must extend DotNetMessage." % type_name
+	if not (probe is GSNetMessage):
+		return GSResult.fail(
+			GSError.CODE_INVALID,
+			"'%s' must extend GSNetMessage." % type_name
 		)
 
-	var declared: StringName = (probe as DotNetMessage)._type_name()
+	var declared: StringName = (probe as GSNetMessage)._type_name()
 	if declared != type_name:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"Message name mismatch.",
 			"registered as '%s' but _type_name() returns '%s'"
 				% [type_name, declared]
@@ -157,18 +157,18 @@ func register(
 	_by_id[id] = type_name
 
 	_schema_hash = ""
-	return DotResult.success(type_name)
+	return GSResult.success(type_name)
 
 
-## Sets the handler for a type. Signature: [code]func(message: DotNetMessage) -> void[/code].
-func on(type_name: StringName, handler: Callable) -> DotResult:
+## Sets the handler for a type. Signature: [code]func(message: GSNetMessage) -> void[/code].
+func on(type_name: StringName, handler: Callable) -> GSResult:
 	if not _by_name.has(type_name):
-		return DotResult.fail(
-			DotError.CODE_INVALID, "Unknown message type '%s'." % type_name
+		return GSResult.fail(
+			GSError.CODE_INVALID, "Unknown message type '%s'." % type_name
 		)
 
 	_by_name[type_name]["handler"] = handler
-	return DotResult.success(type_name)
+	return GSResult.success(type_name)
 
 
 ## Closes the schema. Called automatically on first use. Ids no longer depend on the set, so sealing
@@ -180,7 +180,7 @@ func seal() -> void:
 	_sealed = true
 	_schema_hash = _compute_schema_hash()
 
-	DotLog.info(
+	GSLog.info(
 		CHANNEL,
 		"message schema sealed",
 		{
@@ -209,7 +209,7 @@ func _compute_schema_hash() -> String:
 	# Sorted as Strings, not StringNames: `Array.sort()` on StringNames compares interned
 	# pointers, which is the order the names happened to be created in and differs between
 	# two processes -- the bug that once gave two peers different wire ids for one type.
-	return DotHash.sha256_text("|".join(required_names()))
+	return GSHash.sha256_text("|".join(required_names()))
 
 
 ## Every registered type's name, sorted.
@@ -235,13 +235,13 @@ func is_required(type_name: StringName) -> bool:
 	return _by_name.has(type_name) and bool(_by_name[type_name]["required"])
 
 
-## This end's schema as a standalone payload, for [DotNetManager.receive] on the other. Every type,
+## This end's schema as a standalone payload, for [GSNetManager.receive] on the other. Every type,
 ## with whether it is required, its direction and its delivery.
 func schema_payload() -> PackedByteArray:
 	if not _sealed:
 		seal()
 
-	var body := DotNetWriter.new()
+	var body := GSNetWriter.new()
 	var names := type_names()
 	body.write_varint(names.size())
 
@@ -255,7 +255,7 @@ func schema_payload() -> PackedByteArray:
 	# Appended after the table shipped, so an older reader stops before it.
 	body.write_varint(features)
 
-	var writer := DotNetWriter.new()
+	var writer := GSNetWriter.new()
 	_frame(writer, SCHEMA_ID, body)
 	return writer.to_bytes()
 
@@ -263,12 +263,12 @@ func schema_payload() -> PackedByteArray:
 ## Compares a peer's table with this one and remembers it. Both directions, because either end can be
 ## the newer: a type this end requires that the peer does not know, and a type the peer requires that
 ## this end does not.
-func adopt_peer_schema(peer_id: int, reader: DotNetReader, is_server: bool) -> DotResult:
+func adopt_peer_schema(peer_id: int, reader: GSNetReader, is_server: bool) -> GSResult:
 	var count := reader.read_varint()
 
 	if not reader.ok() or count < 0 or count > MAX_TYPES:
-		return DotResult.fail(
-			DotError.CODE_PARSE,
+		return GSResult.fail(
+			GSError.CODE_PARSE,
 			"A malformed message schema.",
 			"peer %d announced %d types" % [peer_id, count]
 		)
@@ -282,8 +282,8 @@ func adopt_peer_schema(peer_id: int, reader: DotNetReader, is_server: bool) -> D
 		var delivery := reader.read_uint(2)
 
 		if not reader.ok() or name == "":
-			return DotResult.fail(
-				DotError.CODE_PARSE,
+			return GSResult.fail(
+				GSError.CODE_PARSE,
 				"A truncated message schema.",
 				"peer %d" % peer_id
 			)
@@ -325,23 +325,23 @@ func adopt_peer_schema(peer_id: int, reader: DotNetReader, is_server: bool) -> D
 
 	if refusal != null:
 		_refused[peer_id] = refusal
-		DotLog.warn(CHANNEL, "peer's message schema refused", {
+		GSLog.warn(CHANNEL, "peer's message schema refused", {
 			"peer": peer_id,
 			"why": refusal.message,
 			"detail": refusal.detail,
 		})
 		peer_refused.emit(peer_id, refusal)
-		return DotResult.failure(refusal)
+		return GSResult.failure(refusal)
 
 	_refused.erase(peer_id)
 
-	DotLog.debug(CHANNEL, "peer's message schema adopted", {
+	GSLog.debug(CHANNEL, "peer's message schema adopted", {
 		"peer": peer_id,
 		"types": names.size(),
 		"theirs_only": _count_unknown(names),
 	})
 	peer_adopted.emit(peer_id)
-	return DotResult.success(peer_id)
+	return GSResult.success(peer_id)
 
 
 func _count_unknown(names: Dictionary) -> int:
@@ -360,7 +360,7 @@ static func explain(
 	missing_here: PackedStringArray,
 	conflicts: PackedStringArray,
 	is_server: bool
-) -> DotError:
+) -> GSError:
 	if missing_there.is_empty() and missing_here.is_empty() and conflicts.is_empty():
 		return null
 
@@ -389,7 +389,7 @@ static func explain(
 			message = "This server and this game client cannot tell two of their messages apart."
 		parts.append("these types share a wire id: %s" % ", ".join(conflicts))
 
-	return DotError.make(DotError.CODE_VERSION, message, "; ".join(parts))
+	return GSError.make(GSError.CODE_VERSION, message, "; ".join(parts))
 
 
 ## Whether a peer's table has arrived.
@@ -417,7 +417,7 @@ func is_refused(peer_id: int) -> bool:
 	return _refused.has(peer_id)
 
 
-func refusal_of(peer_id: int) -> DotError:
+func refusal_of(peer_id: int) -> GSError:
 	return _refused.get(peer_id)
 
 
@@ -437,38 +437,38 @@ func id_of(type_name: StringName) -> int:
 	return int(_by_name[type_name]["id"])
 
 
-func delivery_of(type_name: StringName) -> DotNetMessage.Delivery:
+func delivery_of(type_name: StringName) -> GSNetMessage.Delivery:
 	if not _by_name.has(type_name):
-		return DotNetMessage.Delivery.RELIABLE
+		return GSNetMessage.Delivery.RELIABLE
 	return _by_name[type_name]["delivery"]
 
 
 ## Writes a message with its id header into [param writer]. Framed as [code]id (32) | body length in
 ## bits (varint) | align | body[/code].
-func encode(message: DotNetMessage, writer: DotNetWriter) -> DotResult:
+func encode(message: GSNetMessage, writer: GSNetWriter) -> GSResult:
 	var name := message.type_name()
 	var id := id_of(name)
 
 	if id < 0:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"Message type '%s' is not registered." % name
 		)
 
-	var body := DotNetWriter.new()
+	var body := GSNetWriter.new()
 	message.write(body)
 
 	if body.overflowed:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"Message '%s' is too large to encode." % name
 		)
 
 	_frame(writer, id, body)
-	return DotResult.success(id)
+	return GSResult.success(id)
 
 
-static func _frame(writer: DotNetWriter, id: int, body: DotNetWriter) -> void:
+static func _frame(writer: GSNetWriter, id: int, body: GSNetWriter) -> void:
 	writer.write_uint(id, ID_BITS)
 	writer.write_varint(body.bit_length())
 	# Aligned so the body's own byte alignment -- `write_bytes` and `write_string` align
@@ -480,10 +480,10 @@ static func _frame(writer: DotNetWriter, id: int, body: DotNetWriter) -> void:
 ## a message there is nothing to dispatch for: a schema table, which it adopts; a type this end does
 ## not have, which it skips; and a type a refused peer sent.
 func decode(
-	reader: DotNetReader,
+	reader: GSNetReader,
 	from_peer_id: int,
 	is_server: bool
-) -> DotResult:
+) -> GSResult:
 	if not _sealed:
 		seal()
 
@@ -491,30 +491,30 @@ func decode(
 	var bits := reader.read_varint()
 
 	if not reader.ok():
-		return DotResult.fail(
-			DotError.CODE_PARSE, "Truncated message header."
+		return GSResult.fail(
+			GSError.CODE_PARSE, "Truncated message header."
 		)
 
-	var body: DotNetReader = null
+	var body: GSNetReader = null
 	if bits <= MAX_BODY_BITS:
 		body = reader.take_bits(bits)
 
 	if body == null:
-		return DotResult.fail(
-			DotError.CODE_PARSE,
+		return GSResult.fail(
+			GSError.CODE_PARSE,
 			"Truncated message body.",
 			"%d bits claimed, from peer %d" % [bits, from_peer_id]
 		)
 
 	if id == SCHEMA_ID:
 		var adopted := adopt_peer_schema(from_peer_id, body, is_server)
-		return adopted if not adopted.ok else DotResult.success(null)
+		return adopted if not adopted.ok else GSResult.success(null)
 
 	if _refused.has(from_peer_id):
 		# Nothing from a peer whose schema was refused is understood: the host is about to
 		# drop it, and a message decoded in the meantime is decoded against a table the two
 		# ends have already agreed they do not share.
-		return DotResult.success(null)
+		return GSResult.success(null)
 
 	var blocked := false
 	if _peers.has(from_peer_id):
@@ -525,31 +525,31 @@ func decode(
 		var note_key := "%d:%d" % [from_peer_id, id]
 		if not _skipped_noted.has(note_key):
 			_skipped_noted[note_key] = true
-			DotLog.debug(CHANNEL, "skipped a message type this end does not have", {
+			GSLog.debug(CHANNEL, "skipped a message type this end does not have", {
 				"peer": from_peer_id, "id": id, "bits": bits,
 			})
-		return DotResult.success(null)
+		return GSResult.success(null)
 
 	var name: StringName = _by_id[id]
 	var entry: Dictionary = _by_name[name]
 
-	var direction: DotNetMessage.Direction = entry["direction"]
+	var direction: GSNetMessage.Direction = entry["direction"]
 
-	if is_server and direction == DotNetMessage.Direction.TO_CLIENT:
-		return DotResult.fail(
-			DotError.CODE_FORBIDDEN,
+	if is_server and direction == GSNetMessage.Direction.TO_CLIENT:
+		return GSResult.fail(
+			GSError.CODE_FORBIDDEN,
 			"A client sent a server-to-client message.",
 			"type '%s' from peer %d" % [name, from_peer_id]
 		)
 
-	if not is_server and direction == DotNetMessage.Direction.TO_SERVER:
-		return DotResult.fail(
-			DotError.CODE_FORBIDDEN,
+	if not is_server and direction == GSNetMessage.Direction.TO_SERVER:
+		return GSResult.fail(
+			GSError.CODE_FORBIDDEN,
 			"The server sent a client-to-server message.",
 			"type '%s'" % name
 		)
 
-	var message: DotNetMessage = (entry["script"] as GDScript).new()
+	var message: GSNetMessage = (entry["script"] as GDScript).new()
 	message.sender_peer_id = from_peer_id
 	message.read(body)
 
@@ -561,7 +561,7 @@ func decode(
 	if not valid.ok:
 		return valid.wrap("Message '%s' failed validation." % name)
 
-	return DotResult.success(message)
+	return GSResult.success(message)
 
 
 ## Dispatches a decoded message to its handler. A type with no handler is not an error — a game may
@@ -569,7 +569,7 @@ func decode(
 ## missing handler does not present as a silently ignored feature.
 var _warned_missing: Dictionary = {}
 
-func dispatch(message: DotNetMessage) -> void:
+func dispatch(message: GSNetMessage) -> void:
 	if message == null:
 		return
 
@@ -582,7 +582,7 @@ func dispatch(message: DotNetMessage) -> void:
 	if not handler.is_valid():
 		if not _warned_missing.has(name):
 			_warned_missing[name] = true
-			DotLog.warn(
+			GSLog.warn(
 				CHANNEL, "no handler for message type", {"type": String(name)}
 			)
 		return
@@ -608,8 +608,8 @@ func describe_lines() -> PackedStringArray:
 		out.append("  %08x %-28s %-18s %-10s %-8s %s" % [
 			int(entry["id"]),
 			name,
-			DotNetMessage.Delivery.keys()[entry["delivery"]],
-			DotNetMessage.Direction.keys()[entry["direction"]],
+			GSNetMessage.Delivery.keys()[entry["delivery"]],
+			GSNetMessage.Direction.keys()[entry["direction"]],
 			"required" if bool(entry["required"]) else "optional",
 			"handled" if (entry["handler"] as Callable).is_valid() else "-",
 		])
@@ -618,7 +618,7 @@ func describe_lines() -> PackedStringArray:
 		out.append("  peer %d: %d types%s" % [
 			int(peer_id),
 			(_peers[peer_id]["names"] as Dictionary).size(),
-			", REFUSED: %s" % (_refused[peer_id] as DotError).message if _refused.has(peer_id) else "",
+			", REFUSED: %s" % (_refused[peer_id] as GSError).message if _refused.has(peer_id) else "",
 		])
 
 	return out

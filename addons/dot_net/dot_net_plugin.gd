@@ -8,10 +8,10 @@ extends EditorPlugin
 const _ICON := "res://addons/dot_net/icon_placeholder.svg"
 
 const _TYPES := [
-	["DotNetManager", "Node", "res://addons/dot_net/dot_net_manager.gd"],
-	["DotNetIdentity", "Node", "res://addons/dot_net/replication/dot_net_identity.gd"],
-	["DotNetBehaviour", "Node", "res://addons/dot_net/replication/dot_net_behaviour.gd"],
-	["DotNetSpawner", "Node", "res://addons/dot_net/replication/dot_net_spawner.gd"],
+	["GSNetManager", "Node", "res://addons/dot_net/dot_net_manager.gd"],
+	["GSNetIdentity", "Node", "res://addons/dot_net/replication/dot_net_identity.gd"],
+	["GSNetBehaviour", "Node", "res://addons/dot_net/replication/dot_net_behaviour.gd"],
+	["GSNetSpawner", "Node", "res://addons/dot_net/replication/dot_net_spawner.gd"],
 ]
 
 

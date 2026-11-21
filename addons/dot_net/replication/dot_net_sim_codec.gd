@@ -1,10 +1,10 @@
-class_name DotNetSimCodec
+class_name GSNetSimCodec
 extends RefCounted
-## GameSpice Sim's native snapshot codec ([code]DotSimSnapshotCodec[/code]): [method DotNetBehaviour._encode] and [method DotNetBehaviour.read_state] in Rust,
-## bit for bit [DotNetVar]'s bytes and values. Optional: without dot-sim, with [member DotNetConfig.sim_codec] off or [member enabled] false the
+## GameSpice Sim's native snapshot codec ([code]GSSimSnapshotCodec[/code]): [method GSNetBehaviour._encode] and [method GSNetBehaviour.read_state] in Rust,
+## bit for bit [GSNetVar]'s bytes and values. Optional: without dot-sim, with [member GSNetConfig.sim_codec] off or [member enabled] false the
 ## GDScript codec runs, and a value the native one cannot reproduce (custom codec, string, wrong type) still goes through the script. docs/native.md.
 
-const CLASS := &"DotSimSnapshotCodec"
+const CLASS := &"GSSimSnapshotCodec"
 
 ## [code]decode[/code]'s stops; the crate's [code]Stop[/code].
 const DONE := 0
@@ -15,7 +15,7 @@ const TRUNCATED_VALUE := 4
 const SCRIPT := 5
 
 ## Off for the whole process: every behaviour bound after this uses the GDScript codec. For
-## tests and measurements; a game turns it off with [member DotNetConfig.sim_codec].
+## tests and measurements; a game turns it off with [member GSNetConfig.sim_codec].
 static var enabled := true
 
 
@@ -27,7 +27,7 @@ static func available() -> bool:
 
 ## A codec for [param net_vars] (one behaviour's declarations, bound to their config), or null
 ## when [param config] turns it off, it cannot load, or none of the declarations is its to do.
-static func create(net_vars: Array[DotNetVar], config: DotNetConfig) -> Object:
+static func create(net_vars: Array[GSNetVar], config: GSNetConfig) -> Object:
 	if config != null and not config.sim_codec:
 		return null
 	if net_vars.is_empty() or not available():
@@ -43,9 +43,9 @@ static func create(net_vars: Array[DotNetVar], config: DotNetConfig) -> Object:
 	return codec
 
 
-## One declaration in [method DotNetVar.write]'s terms: the row GameSpice Net's own native core
-## reads too ([method DotNetBehaviour._native_spec]), [param slot] its property's slot there.
-static func spec_row(declaration: DotNetVar, slot: int) -> PackedFloat64Array:
+## One declaration in [method GSNetVar.write]'s terms: the row GameSpice Net's own native core
+## reads too ([method GSNetBehaviour._native_spec]), [param slot] its property's slot there.
+static func spec_row(declaration: GSNetVar, slot: int) -> PackedFloat64Array:
 	return PackedFloat64Array([
 		declaration.type, declaration.audience, declaration.max_rate, declaration.epsilon,
 		1.0 if declaration.on_spawn_only else 0.0, declaration.bit_width,
@@ -55,11 +55,11 @@ static func spec_row(declaration: DotNetVar, slot: int) -> PackedFloat64Array:
 	])
 
 
-## [method DotNetBehaviour._encode] for [param behaviour] in its codec: the same [code][bytes, end bit, recorded, rate-limited properties][/code],
+## [method GSNetBehaviour._encode] for [param behaviour] in its codec: the same [code][bytes, end bit, recorded, rate-limited properties][/code],
 ## or empty for the script to encode (a value only the script writes, or a snapshot worker: workers can encode one behaviour for two peers
 ## at once, and a codec has one scratch buffer).
-static func encode(behaviour: Node, declarations: Array[DotNetVar], pad: int) -> Array:
-	# behaviour is a DotNetBehaviour, typed as Node (here and in read_state) so this file and the behaviour do not keep each other's parsers alive.
+static func encode(behaviour: Node, declarations: Array[GSNetVar], pad: int) -> Array:
+	# behaviour is a GSNetBehaviour, typed as Node (here and in read_state) so this file and the behaviour do not keep each other's parsers alive.
 	if OS.get_thread_caller_id() != OS.get_main_thread_id():
 		return []
 	var recorded := {}
@@ -88,13 +88,13 @@ static func encode(behaviour: Node, declarations: Array[DotNetVar], pad: int) ->
 	return [out[0], out[1], recorded, rated]
 
 
-## [method DotNetBehaviour.read_state] for [param behaviour] in its codec: the same reads, values,
+## [method GSNetBehaviour.read_state] for [param behaviour] in its codec: the same reads, values,
 ## change handlers, errors and reader position. A declaration only the script reads stops the
 ## codec; the script reads that value and the codec carries on after it.
 static func read_state(
-	behaviour: Node, reader: DotNetReader, tick: int, rewind: bool
-) -> DotResult:
-	var net_vars: Array[DotNetVar] = behaviour.net_vars
+	behaviour: Node, reader: GSNetReader, tick: int, rewind: bool
+) -> GSResult:
+	var net_vars: Array[GSNetVar] = behaviour.net_vars
 	var codec: Object = behaviour._sim_codec
 	# Per call: a change handler may read another behaviour's state.
 	var out: Array = []
@@ -112,7 +112,7 @@ static func read_state(
 		var read := (out.size() - 4) >> 1
 		if remaining < 0:
 			if stop == TRUNCATED_HEADER:
-				return DotResult.fail(DotError.CODE_PARSE, "Truncated state header.")
+				return GSResult.fail(GSError.CODE_PARSE, "Truncated state header.")
 			count = read + int(out[2])
 			behaviour._read_now.clear()
 
@@ -122,25 +122,25 @@ static func read_state(
 		if stop == DONE:
 			break
 		if stop == TRUNCATED_ENTRY:
-			return DotResult.fail(DotError.CODE_PARSE, "Truncated state entry.")
+			return GSResult.fail(GSError.CODE_PARSE, "Truncated state entry.")
 		if stop == UNKNOWN_INDEX:
-			return DotResult.fail(
-				DotError.CODE_VERSION,
+			return GSResult.fail(
+				GSError.CODE_VERSION,
 				"State references an unknown property index.",
 				"index %d, this behaviour has %d — the peers' declarations differ"
 					% [int(out[3]), net_vars.size()]
 			)
 		if stop == TRUNCATED_VALUE:
-			return DotResult.fail(
-				DotError.CODE_PARSE, "Truncated property value.", String(net_vars[int(out[3])].property)
+			return GSResult.fail(
+				GSError.CODE_PARSE, "Truncated property value.", String(net_vars[int(out[3])].property)
 			)
 
 		# SCRIPT: the codec read the index, the value is the script's.
 		var declaration := net_vars[int(out[3])]
 		var value: Variant = declaration.read(reader)
 		if not reader.ok():
-			return DotResult.fail(
-				DotError.CODE_PARSE, "Truncated property value.", String(declaration.property)
+			return GSResult.fail(
+				GSError.CODE_PARSE, "Truncated property value.", String(declaration.property)
 			)
 		behaviour._apply_read(declaration, value)
 		remaining = int(out[2]) - 1
@@ -148,4 +148,4 @@ static func read_state(
 			break
 
 	behaviour._finish_read(tick, rewind)
-	return DotResult.success(count)
+	return GSResult.success(count)

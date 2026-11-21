@@ -11,13 +11,13 @@ Copy `addons/dot_core/` and `addons/dot_net/` into your project and enable both 
 ## Use
 
 ```gdscript
-var net := DotNetManager.new()
+var net := GSNetManager.new()
 net.is_server = true
-net.config = DotNetConfig.new()
+net.config = GSNetConfig.new()
 add_child(net)
 
 net.spawner.register_prefab(&"player", preload("res://player.tscn"))
-net.interest = DotNetInterestGrid.new()
+net.interest = GSNetInterestGrid.new()
 net.send_fn = func(peer, payload, delivery): my_transport.send(peer, payload)
 
 net.start()
@@ -25,19 +25,19 @@ net.start()
 
 The manager never owns a socket: you give it `send_fn` and feed it what arrives.
 
-Make something networked by adding a `DotNetIdentity` and listing what replicates:
+Make something networked by adding a `GSNetIdentity` and listing what replicates:
 
 ```gdscript
-class_name PlayerMovement extends DotNetBehaviour
+class_name PlayerMovement extends GSNetBehaviour
 
 var position: Vector3
 var velocity: Vector3
 var ammo: int
 
 func _register_net_vars() -> void:
-    replicate(&"position", DotNetVar.Type.VECTOR3_POSITION).interpolated()
-    replicate(&"velocity", DotNetVar.Type.VECTOR3_VELOCITY).with_epsilon(0.05)
-    replicate(&"ammo", DotNetVar.Type.UINT).bits(9).to_owner_only()
+    replicate(&"position", GSNetVar.Type.VECTOR3_POSITION).interpolated()
+    replicate(&"velocity", GSNetVar.Type.VECTOR3_VELOCITY).with_epsilon(0.05)
+    replicate(&"ammo", GSNetVar.Type.UINT).bits(9).to_owner_only()
 
 func _net_simulate(tick: int, delta: float) -> void:
     position += velocity * delta      # runs on the server AND the owning client
@@ -53,13 +53,13 @@ Change tracking, quantising, who gets what, rate limiting, interpolation and pre
 | Prediction | The owning client simulates at once, the server corrects, and the client replays unconfirmed inputs on top. Small errors ease out (0.1 s by default); large ones snap, because easing across a teleport drags you through geometry. |
 | Interpolation | Remote entities render slightly in the past so the bracketing snapshots have arrived. The buffer grows fast under jitter and shrinks slowly. |
 | Lag compensation | The server rewinds other entities to where the shooter saw them, tests the shot, and restores. The rewind is bounded (`max_rewind_sec`), so a client cannot claim any rewind it likes. |
-| Interest management | Distance, a spatial grid, or everything. Subclass `DotNetInterest` for teams, rooms, line of sight or fog of war. Data never sent cannot be drawn by a wallhack. |
+| Interest management | Distance, a spatial grid, or everything. Subclass `GSNetInterest` for teams, rooms, line of sight or fog of war. Data never sent cannot be drawn by a wallhack. |
 | Bandwidth budget | A per-client byte budget with a priority accumulator: important entities update often, others eventually, and nothing is starved. |
 | Stats that name the cause | A high correction rate points at a determinism bug, starvation at bandwidth, late inputs at the clock. |
 
 ## Settings
 
-`DotNetConfig` is layered like every GameSpice config (defaults, JSON, `DOT_NET_*` environment, command line). The most useful ones:
+`GSNetConfig` is layered like every GameSpice config (defaults, JSON, `DOT_NET_*` environment, command line). The most useful ones:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
@@ -90,7 +90,7 @@ The rest (stagger, workers, input margins, reconcile easing, far-entity rates) a
 
 ## Extending it
 
-You should not need a fork. Subclass `DotNetBehaviour` for components, `DotNetInput` for controls, `DotNetMessage` for your own messages and `DotNetInterest` for relevance rules. `DotNetVar.Type.CUSTOM` with a write and read pair replicates any type.
+You should not need a fork. Subclass `GSNetBehaviour` for components, `GSNetInput` for controls, `GSNetMessage` for your own messages and `GSNetInterest` for relevance rules. `GSNetVar.Type.CUSTOM` with a write and read pair replicates any type.
 
 ## Limits worth knowing
 

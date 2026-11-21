@@ -1,4 +1,4 @@
-class_name DotNetLatency
+class_name GSNetLatency
 extends RefCounted
 
 ## Artificial latency a client adds to its own traffic, both directions, for testing lag: `cl_latency_baseline`
@@ -22,7 +22,7 @@ var requested: float = 0.0:
 	set(value):
 		requested = maxf(value, 0.0)
 		if max_seconds > 0.0 and requested > max_seconds:
-			DotLog.warn(CHANNEL, "%s held to max_seconds (0 = unlimited)" % CVAR_BASELINE,
+			GSLog.warn(CHANNEL, "%s held to max_seconds (0 = unlimited)" % CVAR_BASELINE,
 				{"requested": value, "max_seconds": max_seconds})
 			requested = max_seconds
 		_refresh()

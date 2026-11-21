@@ -1,7 +1,7 @@
 @tool
 extends "dot_net_manager_receive.gd"
 
-## The acknowledgement half of [DotNetManager]: the tick a client acks, its wire form, and what the server does with one.
+## The acknowledgement half of [GSNetManager]: the tick a client acks, its wire form, and what the server does with one.
 
 
 ## The newest snapshot tick this client has applied in full. Client side.
@@ -15,7 +15,7 @@ func ack_tick() -> int:
 ##
 ## Not sent for you: this addon owns no client-to-server channel, so append it to the input packet you already send (four bytes) and give it to [method receive_ack_payload] on the server. Optional; without it an unconfirmed snapshot is assumed to have arrived once it ages out, and a dropped property is stranded until it changes. See [method receive_ack].
 func encode_ack() -> PackedByteArray:
-	var writer := DotNetWriter.new()
+	var writer := GSNetWriter.new()
 	writer.write_uint(_applied_snapshot_tick, 32)
 	return writer.to_bytes()
 
@@ -23,22 +23,22 @@ func encode_ack() -> PackedByteArray:
 ## Records that a peer has applied every snapshot up to [param tick]. Server side. Snapshots are
 ## unreliable and carry only what changed; acknowledgements let the server re-send what a dropped
 ## packet lost.
-func receive_ack(peer_id: int, tick: int) -> DotResult:
+func receive_ack(peer_id: int, tick: int) -> GSResult:
 	if not is_server:
-		return DotResult.fail(
-			DotError.CODE_FORBIDDEN, "Only a server receives acknowledgements."
+		return GSResult.fail(
+			GSError.CODE_FORBIDDEN, "Only a server receives acknowledgements."
 		)
 
 	if not _acks.has(peer_id):
-		return DotResult.fail(
-			DotError.CODE_STATE, "No such peer.", "peer %d" % peer_id
+		return GSResult.fail(
+			GSError.CODE_STATE, "No such peer.", "peer %d" % peer_id
 		)
 
 	# The tick comes from a client: one past the newest sent would confirm state never sent. A stale
 	# (lower) ack is not refused; reordering makes it normal, and it is ignored below.
 	if tick < 0 or tick > _last_snapshot_tick:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"Acknowledged a snapshot that was never sent.",
 			"peer %d claimed tick %d; the newest is %d"
 				% [peer_id, tick, _last_snapshot_tick]
@@ -54,7 +54,7 @@ func receive_ack(peer_id: int, tick: int) -> DotResult:
 			for identity in registry.all():
 				for behaviour in identity.behaviours:
 					behaviour.forget_peer(peer_id)
-		DotLog.debug(
+		GSLog.debug(
 			CHANNEL,
 			"peer is acknowledging snapshots; lost state will be re-sent",
 			{"peer": peer_id}
@@ -64,16 +64,16 @@ func receive_ack(peer_id: int, tick: int) -> DotResult:
 		_acks[peer_id] = tick
 	_note_acked(peer_id, tick)
 
-	return DotResult.success(int(_acks[peer_id]))
+	return GSResult.success(int(_acks[peer_id]))
 
 
 ## Decodes an acknowledgement produced by [method encode_ack]. Server side.
-func receive_ack_payload(peer_id: int, payload: PackedByteArray) -> DotResult:
-	var reader := DotNetReader.new(payload)
+func receive_ack_payload(peer_id: int, payload: PackedByteArray) -> GSResult:
+	var reader := GSNetReader.new(payload)
 	var tick := reader.read_uint(32)
 
 	if not reader.ok():
-		return DotResult.fail(DotError.CODE_PARSE, "Truncated acknowledgement.")
+		return GSResult.fail(GSError.CODE_PARSE, "Truncated acknowledgement.")
 
 	return receive_ack(peer_id, tick)
 

@@ -19,12 +19,12 @@ func _ready() -> void:
 			peers = int(arg.get_slice("=", 1))
 		elif arg.begins_with("--cfg="):
 			cfg = arg.get_slice("=", 1)
-	var res := DotNetNative.load_library(cfg)
+	var res := GSNetNative.load_library(cfg)
 	if not res.ok:
 		printerr("STRESS no native library: %s" % str(res))
 		get_tree().quit(2)
 		return
-	var core: Object = ClassDB.instantiate(DotNetNative.CORE_CLASS)
+	var core: Object = ClassDB.instantiate(GSNetNative.CORE_CLASS)
 	var empty: Array = []
 	var bad := 0
 	var started := Time.get_ticks_msec()
@@ -40,7 +40,7 @@ func _ready() -> void:
 				printerr("STRESS round %d: %d results for %d peers" % [r, out.size(), peers])
 	var summary := {
 		"rounds": rounds, "workers": workers, "peers": peers, "bad": bad,
-		"ms": Time.get_ticks_msec() - started, "from": DotNetNative.describe()["from"],
+		"ms": Time.get_ticks_msec() - started, "from": GSNetNative.describe()["from"],
 	}
 	print("STRESS %s" % JSON.stringify(summary))
 	get_tree().quit(1 if bad > 0 else 0)

@@ -1,4 +1,4 @@
-class_name DotNetSnapshot
+class_name GSNetSnapshot
 extends RefCounted
 
 ## One tick's worth of world state. Used in three places, which is why it is a value object rather than
@@ -61,7 +61,7 @@ func net_ids() -> PackedInt64Array:
 
 
 ## Properties in [param newer] that differ from this snapshot. The server's delta step.
-func delta_to(newer: DotNetSnapshot) -> Dictionary:
+func delta_to(newer: GSNetSnapshot) -> Dictionary:
 	var out := {}
 
 	for net_id in newer.entities:
@@ -88,8 +88,8 @@ func delta_to(newer: DotNetSnapshot) -> Dictionary:
 
 
 ## Applies a delta on top of this snapshot, producing a new one.
-func apply_delta(delta: Dictionary, new_tick: int) -> DotNetSnapshot:
-	var result := DotNetSnapshot.new(new_tick)
+func apply_delta(delta: Dictionary, new_tick: int) -> GSNetSnapshot:
+	var result := GSNetSnapshot.new(new_tick)
 	result.baseline_tick = tick
 
 	# Carry every entity forward first: an entity absent from the delta is unchanged,
@@ -117,8 +117,8 @@ static func _same(a: Variant, b: Variant) -> bool:
 ## A copy that shares nothing with the original. Snapshots kept as baselines outlive the objects they
 ## were built from, so a shallow copy would let a later tick mutate a baseline the server is still
 ## deltaing against.
-func duplicate_deep() -> DotNetSnapshot:
-	var copy := DotNetSnapshot.new(tick)
+func duplicate_deep() -> GSNetSnapshot:
+	var copy := GSNetSnapshot.new(tick)
 	copy.received_at_ms = received_at_ms
 	copy.baseline_tick = baseline_tick
 	copy.despawned = despawned.duplicate()
@@ -144,6 +144,6 @@ func describe() -> Dictionary:
 
 
 func _to_string() -> String:
-	return "DotNetSnapshot(tick %d, %d entities%s)" % [
+	return "GSNetSnapshot(tick %d, %d entities%s)" % [
 		tick, entities.size(), "" if is_full_state() else ", delta"
 	]

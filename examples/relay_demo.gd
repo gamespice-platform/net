@@ -18,7 +18,7 @@ var _sections_finished: int = 0
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.WARN)
+	GSLog.set_level(GSLog.Level.WARN)
 	await _run()
 
 
@@ -255,7 +255,7 @@ func _section_enet() -> void:
 const THROTTLE_PORT := 27393
 
 ## [b]A steady path, a reliable burst and long frames: ENet's own throttle drops what the game sends
-## unreliably, at the sender.[/b] GameSpice Core's DotTransportENet turns its deceleration to 0 (see its
+## unreliably, at the sender.[/b] GameSpice Core's GSTransportENet turns its deceleration to 0 (see its
 ## `packet_throttle_deceleration` for the mechanism); the stock pair beside it is the control.
 func _section_throttle() -> void:
 	_sections_started += 1
@@ -270,7 +270,7 @@ func _section_throttle() -> void:
 
 	var stock := await _throttle_run(false)
 	var ours := await _throttle_run(true)
-	_line("    stock ENet: %d of %d unreliable delivered, server throttle down to %d; DotTransportENet: %d of %d, down to %d" % [
+	_line("    stock ENet: %d of %d unreliable delivered, server throttle down to %d; GSTransportENet: %d of %d, down to %d" % [
 		stock["got"], stock["sent"], stock["lowest"], ours["got"], ours["sent"], ours["lowest"]])
 
 	_check("both pairs connect through the relay", stock["connected"] and ours["connected"])
@@ -278,7 +278,7 @@ func _section_throttle() -> void:
 		int(stock["lowest"]) < 16, "lowest %d of 32" % stock["lowest"])
 	_check("and drops unreliable packets at the sender, with no loss on the path",
 		int(stock["got"]) < int(stock["sent"]) * 0.8, "%d of %d" % [stock["got"], stock["sent"]])
-	_check("DotTransportENet's throttle never falls", int(ours["lowest"]) == 32, "lowest %d" % ours["lowest"])
+	_check("GSTransportENet's throttle never falls", int(ours["lowest"]) == 32, "lowest %d" % ours["lowest"])
 	_check("so every unreliable packet it sends arrives", int(ours["got"]) >= int(ours["sent"]) - 2,
 		"%d of %d" % [ours["got"], ours["sent"]])
 	_check("and it told the far end: the client's own deceleration is 0 too", int(ours["far_deceleration"]) == 0,
@@ -360,7 +360,7 @@ func _throttle_run(ours: bool) -> Dictionary:
 
 func _throttle_server(ours: bool) -> Object:
 	if ours:
-		var made: DotResult = DotTransportENet.new().create_server(THROTTLE_PORT, "127.0.0.1")
+		var made: GSResult = GSTransportENet.new().create_server(THROTTLE_PORT, "127.0.0.1")
 		return made.value if made.ok else null
 	var peer: Object = ClassDB.instantiate("ENetMultiplayerPeer")
 	if int(peer.call("create_server", THROTTLE_PORT, 4)) != OK:
@@ -370,7 +370,7 @@ func _throttle_server(ours: bool) -> Object:
 
 func _throttle_client(ours: bool, port: int) -> Object:
 	if ours:
-		var made: DotResult = DotTransportENet.new().create_client("127.0.0.1", port)
+		var made: GSResult = GSTransportENet.new().create_client("127.0.0.1", port)
 		return made.value if made.ok else null
 	var peer: Object = ClassDB.instantiate("ENetMultiplayerPeer")
 	peer.call("create_client", "127.0.0.1", port)

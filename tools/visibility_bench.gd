@@ -1,6 +1,6 @@
 extends "res://tools/snapshot_bench.gd"
 
-## [code]snapshot_bench[/code] on a real map: players and NPCs walk between sampled positions; [code]--vis=on[/code] adds the map's [DotNetVisibility]
+## [code]snapshot_bench[/code] on a real map: players and NPCs walk between sampled positions; [code]--vis=on[/code] adds the map's [GSNetVisibility]
 ## (from tools/bsp_vis_export.py). Run: [code]res://tools/visibility_bench.tscn -- --map=/path/orange_x3_vis.json --vis=on --radius=200[/code]
 ## [code]--audible=8[/code]. Prints [code]VIS {json}[/code] (bake, share culled) before [code]BENCH {json}[/code].
 
@@ -8,7 +8,7 @@ var _map_path := ""
 var _vis_on := false
 var _audible := 8.0
 var _points: Array[Vector3] = []
-var _vis: DotNetVisibility = null
+var _vis: GSNetVisibility = null
 ## Per point, a near one to walk to (the third nearest, so mostly not through a wall).
 var _next: PackedInt32Array = PackedInt32Array()
 
@@ -35,7 +35,7 @@ func _ready() -> void:
 		var _n := _next.append(order[mini(3, order.size() - 1)])
 	var b: Array = map["bounds"]
 	var at := Time.get_ticks_usec()
-	_vis = DotNetVisibility.bake_bsp(
+	_vis = GSNetVisibility.bake_bsp(
 		PackedFloat32Array(map["planes"]), PackedInt32Array(map["nodes"]),
 		PackedInt32Array(map["leaf_cluster"]), int(map["clusters"]), PackedInt32Array(map["pvs_offsets"]),
 		Marshalls.base64_to_raw(map["pvs"]), int(map["head"]),
@@ -65,9 +65,9 @@ func _ready() -> void:
 	super._ready()
 
 
-func _make_host() -> DotNetManager:
+func _make_host() -> GSNetManager:
 	var host := super._make_host()
-	var distance := host.interest as DotNetInterestDistance
+	var distance := host.interest as GSNetInterestDistance
 	if _vis_on and distance != null:
 		distance.visibility = _vis
 		distance.visibility_audible_radius = _audible

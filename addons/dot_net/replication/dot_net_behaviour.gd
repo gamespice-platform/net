@@ -1,5 +1,5 @@
 @tool
-class_name DotNetBehaviour
+class_name GSNetBehaviour
 extends "dot_net_behaviour_native.gd"
 
 ## A component whose properties replicate. The class a game subclasses most.
@@ -30,7 +30,7 @@ var _fast_encoded: Array = []
 ## Declaration -> its index in [member net_vars], built once [method _bind] has the list.
 var _index_of: Dictionary = {}
 
-## Bit i set when declaration i may byte-align ([method DotNetVar.may_align]); laid against
+## Bit i set when declaration i may byte-align ([method GSNetVar.may_align]); laid against
 ## a [method _signature] in [method write_state].
 var _align_mask: int = 0
 
@@ -58,13 +58,13 @@ var _share_dirty: bool = false
 const _KEPT_READS := 17
 
 
-## The snapshot's clock, read once by the manager for every peer ([method begin_snapshot_reads]), or -1 outside one: what [member DotNetVar.max_rate] is measured against.
+## The snapshot's clock, read once by the manager for every peer ([method begin_snapshot_reads]), or -1 outside one: what [member GSNetVar.max_rate] is measured against.
 var _snapshot_now_ms: int = -1
 
 
 ## Opens a snapshot's reads. [param now_ms] is the snapshot's clock (-1 reads it here).
 ##
-## [param for_workers] (see [member DotNetConfig.snapshot_workers]) reads every property now, on this thread, and works out the bandwidth estimates, so nothing a worker asks of this behaviour writes to it or reads a node off the main thread.
+## [param for_workers] (see [member GSNetConfig.snapshot_workers]) reads every property now, on this thread, and works out the bandwidth estimates, so nothing a worker asks of this behaviour writes to it or reads a node off the main thread.
 func begin_snapshot_reads(now_ms: int = -1, for_workers: bool = false) -> void:
 	# A fresh dictionary rather than a cleared one: the last one is kept, by serial.
 	_read_serial += 1
@@ -118,16 +118,16 @@ func _net_write_property(property: StringName, value: Variant) -> void:
 
 
 ## How many properties one behaviour may replicate: the count of changed ones and each one's
-## index both travel in 6 bits ([method _encode]), and [DotNetWriter] masks silently, so a 64th
+## index both travel in 6 bits ([method _encode]), and [GSNetWriter] masks silently, so a 64th
 ## would be sent as a count of 0 and the 65th as index 0. Private: the width is the wire's.
 const _MAX_NET_VARS := 63
 
 
-## Declares a replicated property. Returns the [DotNetVar] for chaining.
+## Declares a replicated property. Returns the [GSNetVar] for chaining.
 ##
 ## Past [constant _MAX_NET_VARS] it is refused with an error and returned unregistered, rather than aliasing another property.
-func replicate(property: StringName, type: DotNetVar.Type) -> DotNetVar:
-	var declaration := DotNetVar.make(property, type)
+func replicate(property: StringName, type: GSNetVar.Type) -> GSNetVar:
+	var declaration := GSNetVar.make(property, type)
 	declaration.bind_config(_config)
 	if net_vars.size() >= _MAX_NET_VARS:
 		push_error("%s: replicate(%s) refused, a behaviour replicates at most %d properties (6-bit index)." % [name, property, _MAX_NET_VARS])
@@ -143,12 +143,12 @@ func replicate_custom(
 	property: StringName,
 	writer_fn: Callable,
 	reader_fn: Callable
-) -> DotNetVar:
-	return replicate(property, DotNetVar.Type.CUSTOM).codec(writer_fn, reader_fn)
+) -> GSNetVar:
+	return replicate(property, GSNetVar.Type.CUSTOM).codec(writer_fn, reader_fn)
 
 
 ## Called by the manager before [method _register_net_vars].
-func _bind(config: DotNetConfig) -> void:
+func _bind(config: GSNetConfig) -> void:
 	_config = config
 
 	if _registered:
@@ -168,12 +168,12 @@ func _bind(config: DotNetConfig) -> void:
 			_align_mask |= 1 << i
 
 	_registered = true
-	_sim_codec = DotNetSimCodec.create(net_vars, config)
+	_sim_codec = GSNetSimCodec.create(net_vars, config)
 
 	# A behaviour that declares nothing is legal — it may exist only for
 	# _net_simulate — but it is also what a forgotten _register_net_vars looks like.
 	if net_vars.is_empty():
-		DotLog.debug(
+		GSLog.debug(
 			CHANNEL,
 			"behaviour declares no replicated properties",
 			{"node": name}
@@ -191,7 +191,7 @@ func collect_dirty(
 	peer_id: int,
 	force: bool = false,
 	until_acked: bool = false
-) -> Array[DotNetVar]:
+) -> Array[GSNetVar]:
 	return _collect_dirty(_view_for(peer_id), peer_id, force, until_acked)
 
 
@@ -203,7 +203,7 @@ func collect_for_peer(
 	oldest_tick: int,
 	until_acked: bool,
 	acked_ring: PackedInt64Array = PackedInt64Array()
-) -> Array[DotNetVar]:
+) -> Array[GSNetVar]:
 	var view: PeerView = _views.get(peer_id)
 	if view == null:
 		view = _view_for(peer_id)
@@ -221,7 +221,7 @@ func _collect_dirty(
 	peer_id: int,
 	force: bool,
 	until_acked: bool
-) -> Array[DotNetVar]:
+) -> Array[GSNetVar]:
 	var owner: int = identity.owner_peer_id
 
 	# A peer in step shares its answer with every other peer in step from the same snapshot:
@@ -242,7 +242,7 @@ func _collect_dirty(
 				view.synced_serial = _read_serial
 			return shared
 
-	var out: Array[DotNetVar] = []
+	var out: Array[GSNetVar] = []
 	# Only asked for when something here is rate-limited: a clock read per behaviour per
 	# peer per snapshot is a thousand of them a tick on a full server, for nothing.
 	var now := -1
@@ -253,10 +253,10 @@ func _collect_dirty(
 	# The three are still the definitions; netcode_demo's dirty-tracking sections hold it.
 	for declaration in net_vars:
 		match declaration.audience:
-			DotNetVar.Audience.OWNER:
+			GSNetVar.Audience.OWNER:
 				if peer_id != owner:
 					continue
-			DotNetVar.Audience.OBSERVERS:
+			GSNetVar.Audience.OBSERVERS:
 				if peer_id == owner:
 					continue
 
@@ -281,7 +281,7 @@ func _collect_dirty(
 			continue
 
 		# `differs` inlined for the common declaration, with no epsilon: there it is
-		# exactly "a different type, or not equal" (see [method DotNetVar.differs]).
+		# exactly "a different type, or not equal" (see [method GSNetVar.differs]).
 		var dirty: bool
 		if not believed.has(property):
 			dirty = true
@@ -327,13 +327,13 @@ func _dirty_since(since: int, peer_id: int) -> Variant:
 	if then.is_empty() and not net_vars.is_empty():
 		return null
 	var owner: int = identity.owner_peer_id
-	var out: Array[DotNetVar] = []
+	var out: Array[GSNetVar] = []
 	for declaration in net_vars:
 		match declaration.audience:
-			DotNetVar.Audience.OWNER:
+			GSNetVar.Audience.OWNER:
 				if peer_id != owner:
 					continue
-			DotNetVar.Audience.OBSERVERS:
+			GSNetVar.Audience.OBSERVERS:
 				if peer_id == owner:
 					continue
 		var property := declaration.property
@@ -352,7 +352,7 @@ func _dirty_since(since: int, peer_id: int) -> Variant:
 
 func _is_dirty(
 	view: PeerView,
-	declaration: DotNetVar,
+	declaration: GSNetVar,
 	current: Variant
 ) -> bool:
 	if not view.believed.has(declaration.property):
@@ -364,7 +364,7 @@ func _is_dirty(
 ## rather than [member PeerView.believed]; see [method collect_dirty]'s [param until_acked].
 func _is_unconfirmed(
 	view: PeerView,
-	declaration: DotNetVar,
+	declaration: GSNetVar,
 	current: Variant
 ) -> bool:
 	if not view.acked.has(declaration.property):
@@ -375,8 +375,8 @@ func _is_unconfirmed(
 ## Writes the given properties and records them as sent to [param peer_id]. Recorded here, not at
 ## collection, so a send dropped by the budget stays dirty.
 func write_state(
-	writer: DotNetWriter,
-	declarations: Array[DotNetVar],
+	writer: GSNetWriter,
+	declarations: Array[GSNetVar],
 	peer_id: int = 0,
 	tick: int = 0
 ) -> void:
@@ -422,7 +422,7 @@ func write_state(
 		return
 
 	# One merge rather than a loop of assignments, and a send time only for what is
-	# rate-limited, since nothing else reads one ([member DotNetVar.max_rate]): at 32
+	# rate-limited, since nothing else reads one ([member GSNetVar.max_rate]): at 32
 	# players this loop ran for every property of every entity for every peer.
 	view.believed.merge(recorded, true)
 	var rated: Array = encoded[3]
@@ -456,7 +456,7 @@ static func _pending_entry(encoded: Array, recorded: Dictionary, tick: int) -> D
 
 
 ## [param encoded]'s bits (an [method _encode] result begun at bit 0) moved [param pad] bits
-## up, low bits zero: what [method DotNetWriter.write_bit_run] copies for a writer standing
+## up, low bits zero: what [method GSNetWriter.write_bit_run] copies for a writer standing
 ## [param pad] bits into a byte. Kept on the entry, which lives for one snapshot.
 func _shifted(encoded: Array, pad: int) -> PackedByteArray:
 	if encoded.size() < 5:
@@ -482,8 +482,8 @@ func _shifted(encoded: Array, pad: int) -> PackedByteArray:
 
 ## Bits [method write_state] would add for [param declarations] to a writer standing [param pad] bits into a byte (its [code]bit_length() & 7[/code]).
 ##
-## Exact, not an estimate: the encoding measured is the one [method write_state] then copies. What [DotNetManager] cuts parts by ([member DotNetConfig.mtu]); [method estimated_bits] can be several times the real figure.
-func state_bits(declarations: Array[DotNetVar], pad: int) -> int:
+## Exact, not an estimate: the encoding measured is the one [method write_state] then copies. What [GSNetManager] cuts parts by ([member GSNetConfig.mtu]); [method estimated_bits] can be several times the real figure.
+func state_bits(declarations: Array[GSNetVar], pad: int) -> int:
 	var found := _encoded_for(declarations, pad & 7)
 	var encoded: Array = found[0]
 	if bool(found[1]):
@@ -493,8 +493,8 @@ func state_bits(declarations: Array[DotNetVar], pad: int) -> int:
 
 ## The encoding of [param declarations] for a writer [param pad] bits into a byte, as
 ## [code][encoded, aligned][/code]: the [method _encode] result, and whether it was encoded at
-## that bit (copied with [method DotNetWriter.write_bit_run]) or at bit 0 (shifted into place).
-func _encoded_for(declarations: Array[DotNetVar], pad: int) -> Array:
+## that bit (copied with [method GSNetWriter.write_bit_run]) or at bit 0 (shifted into place).
+func _encoded_for(declarations: Array[GSNetVar], pad: int) -> Array:
 	var encoded: Array = []
 	# One shared copy, shifted into place, unless something in it is byte-aligned: a string or
 	# bytes aligns before its bytes, so such a set is encoded at the bit it will be laid in at
@@ -542,11 +542,11 @@ func _encoded_for(declarations: Array[DotNetVar], pad: int) -> Array:
 ## The encoding of [param declarations], as [code][bytes, end bit, recorded, rate-limited properties][/code], begun [param pad] zero bits into its first byte.
 ##
 ## An index per property rather than a bitmask: smaller with a handful of properties, and needs only the shared registration order.
-func _encode(declarations: Array[DotNetVar], pad: int = 0) -> Array:
-	var native := DotNetSimCodec.encode(self, declarations, pad) if _sim_codec != null else []
+func _encode(declarations: Array[GSNetVar], pad: int = 0) -> Array:
+	var native := GSNetSimCodec.encode(self, declarations, pad) if _sim_codec != null else []
 	if not native.is_empty():
 		return native
-	var scratch := DotNetWriter.new(64)
+	var scratch := GSNetWriter.new(64)
 	var recorded := {}
 	var rated: Array[StringName] = []
 
@@ -576,7 +576,7 @@ func _encode(declarations: Array[DotNetVar], pad: int = 0) -> Array:
 ## [param declarations] as a bitmask of their indices, or -1 when it cannot stand for them:
 ## out of declaration order (the bits would be the same for two different encodings) or
 ## an index past what an int holds.
-func _signature(declarations: Array[DotNetVar]) -> int:
+func _signature(declarations: Array[GSNetVar]) -> int:
 	var key := 0
 	var last := -1
 
@@ -594,13 +594,13 @@ func _signature(declarations: Array[DotNetVar]) -> int:
 ## Reads properties and applies them, firing change handlers. Reachable from the network: an out-of-
 ## range index is a corrupt stream and stops the read, as continuing would decode the rest as the wrong
 ## type.
-func read_state(reader: DotNetReader, tick: int, rewind: bool = false) -> DotResult:
+func read_state(reader: GSNetReader, tick: int, rewind: bool = false) -> GSResult:
 	if _sim_codec != null and not reader.exhausted:
-		return DotNetSimCodec.read_state(self, reader, tick, rewind)
+		return GSNetSimCodec.read_state(self, reader, tick, rewind)
 	var count := reader.read_uint(6)
 
 	if not reader.ok():
-		return DotResult.fail(DotError.CODE_PARSE, "Truncated state header.")
+		return GSResult.fail(GSError.CODE_PARSE, "Truncated state header.")
 
 	_read_now.clear()
 
@@ -608,11 +608,11 @@ func read_state(reader: DotNetReader, tick: int, rewind: bool = false) -> DotRes
 		var index := reader.read_uint(6)
 
 		if not reader.ok():
-			return DotResult.fail(DotError.CODE_PARSE, "Truncated state entry.")
+			return GSResult.fail(GSError.CODE_PARSE, "Truncated state entry.")
 
 		if index >= net_vars.size():
-			return DotResult.fail(
-				DotError.CODE_VERSION,
+			return GSResult.fail(
+				GSError.CODE_VERSION,
 				"State references an unknown property index.",
 				"index %d, this behaviour has %d — the peers' declarations differ"
 					% [index, net_vars.size()]
@@ -622,16 +622,16 @@ func read_state(reader: DotNetReader, tick: int, rewind: bool = false) -> DotRes
 		var value: Variant = declaration.read(reader)
 
 		if not reader.ok():
-			return DotResult.fail(
-				DotError.CODE_PARSE, "Truncated property value.", String(declaration.property)
+			return GSResult.fail(
+				GSError.CODE_PARSE, "Truncated property value.", String(declaration.property)
 			)
 		_apply_read(declaration, value)
 
 	_finish_read(tick, rewind)
-	return DotResult.success(count)
+	return GSResult.success(count)
 
 
-func _apply_read(declaration: DotNetVar, value: Variant) -> void:
+func _apply_read(declaration: GSNetVar, value: Variant) -> void:
 	var property := declaration.property
 	if declaration.change_handler.is_valid():
 		var previous: Variant = _baseline.get(property)
@@ -698,7 +698,7 @@ func received_values() -> Dictionary:
 
 ## Where a remote entity is at [param tick], from what the server last said: the last received [param
 ## property] carried along the last received [param velocity_property] (per second) for the ticks
-## since, at most [member DotNetConfig.remote_extrapolation_sec].
+## since, at most [member GSNetConfig.remote_extrapolation_sec].
 func extrapolated_value(property: StringName, velocity_property: StringName, tick: int) -> Variant:
 	if not _baseline.has(property):
 		return null
@@ -733,7 +733,7 @@ func snapshot_values() -> Dictionary:
 ## Estimated bits a full update costs, for the bandwidth budget.
 func estimated_bits(peer_id: int) -> int:
 	# Asked once per entity per peer per snapshot, and its answer depends only on
-	# whether the peer is the owner (see [method DotNetVar.visible_to]) -- so two
+	# whether the peer is the owner (see [method GSNetVar.visible_to]) -- so two
 	# numbers, worked out once and again only if the declarations change.
 	var is_owner: bool = peer_id == identity.owner_peer_id
 	if _estimate_for != net_vars.size():
@@ -759,7 +759,7 @@ var _estimate_other: int = -1
 var _estimate_for: int = -1
 
 
-func find_var(property: StringName) -> DotNetVar:
+func find_var(property: StringName) -> GSNetVar:
 	for declaration in net_vars:
 		if declaration.property == property:
 			return declaration
@@ -771,9 +771,9 @@ func describe() -> Dictionary:
 	for declaration in net_vars:
 		properties.append({
 			"property": String(declaration.property),
-			"type": DotNetVar.Type.keys()[declaration.type],
+			"type": GSNetVar.Type.keys()[declaration.type],
 			"bits": declaration.estimated_bits(),
-			"audience": DotNetVar.Audience.keys()[declaration.audience],
+			"audience": GSNetVar.Audience.keys()[declaration.audience],
 		})
 
 	return {
@@ -783,7 +783,7 @@ func describe() -> Dictionary:
 	}
 
 
-# Worker-thread variants of [method collect_for_peer], [method write_state] and [method state_bits], used when [member DotNetConfig.snapshot_workers] is set. Copies on purpose: routing the inline path through an [EncodeCache] cost every game about 14%.
+# Worker-thread variants of [method collect_for_peer], [method write_state] and [method state_bits], used when [member GSNetConfig.snapshot_workers] is set. Copies on purpose: routing the inline path through an [EncodeCache] cost every game about 14%.
 # A change to one is a change to both; netcode_demo's [snapshot threads] section compares them byte for byte.
 # A worker writes only the live [PeerView] of its own peers (made on the manager's thread first).
 
@@ -799,7 +799,7 @@ func collect_for_view(
 	until_acked: bool,
 	cache: EncodeCache,
 	acked_ring: PackedInt64Array = PackedInt64Array()
-) -> Array[DotNetVar]:
+) -> Array[GSNetVar]:
 	if strict:
 		view.strict = true
 	if acked_tick > view.last_ack:
@@ -816,7 +816,7 @@ func _collect_dirty_cached(
 	force: bool,
 	until_acked: bool,
 	cache: EncodeCache
-) -> Array[DotNetVar]:
+) -> Array[GSNetVar]:
 	var owner: int = identity.owner_peer_id
 
 	# A peer in step shares its answer with every other peer in step from the same snapshot:
@@ -836,7 +836,7 @@ func _collect_dirty_cached(
 				view.synced_serial = _read_serial
 			return shared
 
-	var out: Array[DotNetVar] = []
+	var out: Array[GSNetVar] = []
 	# Only asked for when something here is rate-limited: a clock read per behaviour per
 	# peer per snapshot is a thousand of them a tick on a full server, for nothing.
 	var now := -1
@@ -846,10 +846,10 @@ func _collect_dirty_cached(
 	# inline copy; netcode_demo's dirty-tracking sections hold both.
 	for declaration in net_vars:
 		match declaration.audience:
-			DotNetVar.Audience.OWNER:
+			GSNetVar.Audience.OWNER:
 				if peer_id != owner:
 					continue
-			DotNetVar.Audience.OBSERVERS:
+			GSNetVar.Audience.OBSERVERS:
 				if peer_id == owner:
 					continue
 
@@ -874,7 +874,7 @@ func _collect_dirty_cached(
 			continue
 
 		# `differs` inlined for the common declaration, with no epsilon: there it is
-		# exactly "a different type, or not equal" (see [method DotNetVar.differs]).
+		# exactly "a different type, or not equal" (see [method GSNetVar.differs]).
 		var dirty: bool
 		if not believed.has(property):
 			dirty = true
@@ -916,8 +916,8 @@ func _collect_dirty_cached(
 
 ## [method write_state] into [param view] with [param cache]; see [method collect_for_view].
 func write_for_view(
-	writer: DotNetWriter,
-	declarations: Array[DotNetVar],
+	writer: GSNetWriter,
+	declarations: Array[GSNetVar],
 	view: PeerView,
 	tick: int,
 	cache: EncodeCache
@@ -957,7 +957,7 @@ func write_for_view(
 		return
 
 	# One merge rather than a loop of assignments, and a send time only for what is
-	# rate-limited, since nothing else reads one ([member DotNetVar.max_rate]): at 32
+	# rate-limited, since nothing else reads one ([member GSNetVar.max_rate]): at 32
 	# players this loop ran for every property of every entity for every peer.
 	view.believed.merge(recorded, true)
 	var rated: Array = encoded[3]
@@ -976,7 +976,7 @@ func write_for_view(
 
 
 ## [method state_bits] with [param cache].
-func state_bits_cached(declarations: Array[DotNetVar], pad: int, cache: EncodeCache) -> int:
+func state_bits_cached(declarations: Array[GSNetVar], pad: int, cache: EncodeCache) -> int:
 	var found := _encoded_for_cached(declarations, pad & 7, cache)
 	var encoded: Array = found[0]
 	if bool(found[1]):
@@ -984,7 +984,7 @@ func state_bits_cached(declarations: Array[DotNetVar], pad: int, cache: EncodeCa
 	return int(encoded[1])
 
 
-func _encoded_for_cached(declarations: Array[DotNetVar], pad: int, cache: EncodeCache) -> Array:
+func _encoded_for_cached(declarations: Array[GSNetVar], pad: int, cache: EncodeCache) -> Array:
 	var encoded: Array = []
 	# One shared copy, shifted into place, unless something in it is byte-aligned; see the
 	# inline copy in [method state_bits].

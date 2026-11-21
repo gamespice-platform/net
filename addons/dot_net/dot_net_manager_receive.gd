@@ -4,23 +4,23 @@ extends "dot_net_manager_send.gd"
 ## The client side of a snapshot: reading one, applying its entities and reconciling the predicted ones.
 
 
-func _receive_snapshot(payload: PackedByteArray) -> DotResult:
+func _receive_snapshot(payload: PackedByteArray) -> GSResult:
 	if is_server:
-		return DotResult.fail(
-			DotError.CODE_FORBIDDEN, "A server does not receive snapshots."
+		return GSResult.fail(
+			GSError.CODE_FORBIDDEN, "A server does not receive snapshots."
 		)
 
 	stats.note_received(payload.size())
-	DotNetCostProbe.note(&"snapshot", DotNetCostProbe.IN, payload.size())
+	GSNetCostProbe.note(&"snapshot", GSNetCostProbe.IN, payload.size())
 
-	var reader := DotNetReader.new(payload)
+	var reader := GSNetReader.new(payload)
 
 	var tick := reader.read_uint(32)
 	var count := reader.read_uint(12)
 
 	if not reader.ok():
 		stats.note_decode_failure()
-		return DotResult.fail(DotError.CODE_PARSE, "Truncated snapshot header.")
+		return GSResult.fail(GSError.CODE_PARSE, "Truncated snapshot header.")
 
 	var skipped := _admit_snapshot_tick(tick)
 	if skipped != null:
@@ -45,11 +45,11 @@ func _receive_snapshot(payload: PackedByteArray) -> DotResult:
 		_applied_snapshot_tick = tick
 
 	snapshot_applied.emit(tick)
-	return DotResult.success(tick)
+	return GSResult.success(tick)
 
 
 ## Null to read on, else the result to return (superseded or repeated).
-func _admit_snapshot_tick(tick: int) -> DotResult:
+func _admit_snapshot_tick(tick: int) -> GSResult:
 	# Every time: a client adopts the server's tick rate after it started.
 	stats.snapshot_interval_ticks = config.ticks_per_snapshot()
 
@@ -63,12 +63,12 @@ func _admit_snapshot_tick(tick: int) -> DotResult:
 	if tick < _receiving_tick:
 		# Superseded: applying it would overwrite newer state, and its arrival time would read
 		# as a sudden lead. A late part of an older tick is dropped too and re-sent unacked.
-		return DotResult.success(_applied_snapshot_tick)
+		return GSResult.success(_applied_snapshot_tick)
 
 	if tick == _receiving_tick and _applied_snapshot_tick == tick:
 		# Every part is in: a repeat. (A repeat of one part while another is missing is applied
 		# again, writing the same values; it is not told apart until its trailer is read.)
-		return DotResult.success(_applied_snapshot_tick)
+		return GSResult.success(_applied_snapshot_tick)
 
 	if tick > _receiving_tick:
 		_receiving_tick = tick
@@ -82,14 +82,14 @@ func _admit_snapshot_tick(tick: int) -> DotResult:
 
 
 ## Null when all entities were applied, else the result to return.
-func _apply_snapshot_entities(reader: DotNetReader, count: int, tick: int) -> DotResult:
+func _apply_snapshot_entities(reader: GSNetReader, count: int, tick: int) -> GSResult:
 	for _i in range(count):
-		var net_id := reader.read_uint(DotNetRegistry.ID_BITS)
+		var net_id := reader.read_uint(GSNetRegistry.ID_BITS)
 		var behaviour_count := reader.read_uint(6)
 
 		if not reader.ok():
 			stats.note_decode_failure()
-			return DotResult.fail(DotError.CODE_PARSE, "Truncated snapshot entry.")
+			return GSResult.fail(GSError.CODE_PARSE, "Truncated snapshot entry.")
 
 		var identity := registry.get_identity(net_id)
 
@@ -97,10 +97,10 @@ func _apply_snapshot_entities(reader: DotNetReader, count: int, tick: int) -> Do
 			# Not spawned yet or already despawned, both normal in flight; the body cannot
 			# be skipped without its declarations.
 			if not registry.was_recently_removed(net_id):
-				DotLog.debug(
+				GSLog.debug(
 					CHANNEL, "state for an unknown entity", {"net_id": net_id}
 				)
-			return DotResult.success(tick)
+			return GSResult.success(tick)
 
 		var applied := _apply_entity(identity, tick, reader, behaviour_count)
 		if not applied.ok:
@@ -110,7 +110,7 @@ func _apply_snapshot_entities(reader: DotNetReader, count: int, tick: int) -> Do
 
 
 ## Success with Vector2i(part, total).
-func _read_snapshot_trailer(reader: DotNetReader, tick: int) -> DotResult:
+func _read_snapshot_trailer(reader: GSNetReader, tick: int) -> GSResult:
 	# Only a split snapshot or one with an unchanged list has a tail (see [method _send_to_peer]).
 	var part := 0
 	var total := 1
@@ -123,11 +123,11 @@ func _read_snapshot_trailer(reader: DotNetReader, tick: int) -> DotResult:
 		total = reader.read_uint(4) + 1
 		if not reader.ok() or part >= total:
 			stats.note_decode_failure()
-			return DotResult.fail(
-				DotError.CODE_PARSE, "Bad snapshot part trailer.",
+			return GSResult.fail(
+				GSError.CODE_PARSE, "Bad snapshot part trailer.",
 				"part %d of %d" % [part, total]
 			)
-		# After the trailer: padding, or the input lead ([method DotNetClock.note_input_lead]).
+		# After the trailer: padding, or the input lead ([method GSNetClock.note_input_lead]).
 		if reader.bits_remaining() >= INPUT_LEAD_BITS:
 			var arrival := reader.read_int(INPUT_LEAD_FIELD_BITS)
 			var input_tick := tick + reader.read_int(INPUT_LEAD_FIELD_BITS)
@@ -138,25 +138,25 @@ func _read_snapshot_trailer(reader: DotNetReader, tick: int) -> DotResult:
 		total = reader.read_uint(4) + 1
 		if not reader.ok() or total < 2 or part >= total:
 			stats.note_decode_failure()
-			return DotResult.fail(
-				DotError.CODE_PARSE, "Bad snapshot part trailer.",
+			return GSResult.fail(
+				GSError.CODE_PARSE, "Bad snapshot part trailer.",
 				"part %d of %d" % [part, total]
 			)
-	return DotResult.success(Vector2i(part, total))
+	return GSResult.success(Vector2i(part, total))
 
 
-## One entity of a snapshot, client side: its body read from [param reader], or, with a null reader, an entity listed as unchanged and applied as an empty body would be ([method DotNetBehaviour.apply_unchanged]).
+## One entity of a snapshot, client side: its body read from [param reader], or, with a null reader, an entity listed as unchanged and applied as an empty body would be ([method GSNetBehaviour.apply_unchanged]).
 ##
 ## Either way the predictor or interpolator hears of it at this tick, so a still entity's rewind and interpolation samples match.
 func _apply_entity(
-	identity: DotNetIdentity, tick: int, reader: DotNetReader, behaviour_count: int
-) -> DotResult:
+	identity: GSNetIdentity, tick: int, reader: GSNetReader, behaviour_count: int
+) -> GSResult:
 	var values := {}
 
 	for b in range(behaviour_count):
 		if b >= identity.behaviours.size():
-			return DotResult.fail(
-				DotError.CODE_VERSION,
+			return GSResult.fail(
+				GSError.CODE_VERSION,
 				"Behaviour count mismatch.",
 				"entity %d: sent %d, local has %d"
 					% [identity.net_id, behaviour_count, identity.behaviours.size()]
@@ -176,7 +176,7 @@ func _apply_entity(
 					# The client never computes a server-driven value: the server's is the newest there is.
 					if declaration.client_predicts:
 						held[declaration.property] = behaviour._net_read_property(declaration.property)
-			var applied: DotResult = DotResult.success(0)
+			var applied: GSResult = GSResult.success(0)
 			if reader == null:
 				behaviour.apply_unchanged(tick, true)
 			else:
@@ -187,7 +187,7 @@ func _apply_entity(
 			for property: StringName in held:
 				behaviour._net_write_property(property, held[property])
 		else:
-			var applied2: DotResult = DotResult.success(0)
+			var applied2: GSResult = GSResult.success(0)
 			if reader == null:
 				behaviour.apply_unchanged(tick)
 			else:
@@ -197,7 +197,7 @@ func _apply_entity(
 
 			# What the server last SENT, not what the property holds: an interpolated property holds the interpolator's blend, which handed back
 			# as the server's word freezes the entity part of the way (history.md #17, #18). Straight from the baseline
-			# ([method DotNetBehaviour.received_values] without the dictionary it builds per entity per snapshot).
+			# ([method GSNetBehaviour.received_values] without the dictionary it builds per entity per snapshot).
 			var baseline := behaviour._baseline
 			for declaration in behaviour.net_vars:
 				if declaration.interpolate and baseline.has(declaration.property):
@@ -210,7 +210,7 @@ func _apply_entity(
 			var waiting: Array = _pending_reconcile.get(identity.net_id, [])
 			if not waiting.is_empty():
 				if int(waiting[1]) > tick:
-					return DotResult.success(tick)
+					return GSResult.success(tick)
 				_reconciles_coalesced += 1
 			_pending_reconcile[identity.net_id] = [identity, tick, values]
 		else:
@@ -218,18 +218,18 @@ func _apply_entity(
 	elif not values.is_empty():
 		interpolator.push(identity.net_id, tick, values)
 
-	return DotResult.success(tick)
+	return GSResult.success(tick)
 
 
 ## The unchanged list in a snapshot part's tail (see [method _write_unchanged_tail]): every id in it applied as an entity with an empty body. An id this client does not hold is skipped; there is nothing to step over. Leaves the reader at the part trailer.
-func _apply_unchanged_tail(reader: DotNetReader, tick: int) -> DotResult:
+func _apply_unchanged_tail(reader: GSNetReader, tick: int) -> GSResult:
 	var mark := reader.read_uint(8)
 	if not reader.ok() or mark != UNCHANGED_TAIL_MARK:
-		return DotResult.fail(DotError.CODE_PARSE, "Bad snapshot tail.", "mark %d" % mark)
+		return GSResult.fail(GSError.CODE_PARSE, "Bad snapshot tail.", "mark %d" % mark)
 
 	var run_count := _read_gamma(reader)
 	if run_count < 0 or run_count > MAX_UNCHANGED_LISTED:
-		return DotResult.fail(DotError.CODE_PARSE, "Bad unchanged-entity list.")
+		return GSResult.fail(GSError.CODE_PARSE, "Bad unchanged-entity list.")
 
 	var ids: PackedInt32Array = []
 	var cursor := 0
@@ -237,10 +237,10 @@ func _apply_unchanged_tail(reader: DotNetReader, tick: int) -> DotResult:
 		var gap := _read_gamma(reader)
 		var length := _read_gamma(reader) + 1
 		if gap < 0 or length < 1 or ids.size() + length > MAX_UNCHANGED_LISTED:
-			return DotResult.fail(DotError.CODE_PARSE, "Bad unchanged-entity run.")
+			return GSResult.fail(GSError.CODE_PARSE, "Bad unchanged-entity run.")
 		var first := cursor + gap
-		if first + length > (1 << DotNetRegistry.ID_BITS):
-			return DotResult.fail(DotError.CODE_PARSE, "Unchanged-entity run out of range.")
+		if first + length > (1 << GSNetRegistry.ID_BITS):
+			return GSResult.fail(GSError.CODE_PARSE, "Unchanged-entity run out of range.")
 		for id in range(first, first + length):
 			ids.append(id)
 		cursor = first + length
@@ -254,10 +254,10 @@ func _apply_unchanged_tail(reader: DotNetReader, tick: int) -> DotResult:
 		if not applied.ok:
 			return applied
 
-	return DotResult.success(ids.size())
+	return GSResult.success(ids.size())
 
 
-func _reconcile(identity: DotNetIdentity, tick: int, values: Dictionary) -> void:
+func _reconcile(identity: GSNetIdentity, tick: int, values: Dictionary) -> void:
 	var started := Time.get_ticks_usec()
 	predictor.reconcile(
 		identity, tick, values, _local_inputs, clock.tick,

@@ -123,7 +123,7 @@ Variant to_variant(const Val &a) {
 	}
 }
 
-// DotNetVar._values_equal: the same type, and equal.
+// GSNetVar._values_equal: the same type, and equal.
 bool val_equal(const Val &a, const Val &b) {
 	if (a.vt != b.vt) {
 		return false;
@@ -154,7 +154,7 @@ bool val_equal(const Val &a, const Val &b) {
 	}
 }
 
-// DotNetVar.differs.
+// GSNetVar.differs.
 bool differs(const Decl &d, const Val &old, const Val &cur) {
 	if (d.epsilon <= 0.0) {
 		return !val_equal(old, cur);
@@ -205,7 +205,7 @@ Decl decl_from(const PackedFloat64Array &s) {
 	return d;
 }
 
-// The value as DotNetVar.write converts it, or false for one only GDScript can convert.
+// The value as GSNetVar.write converts it, or false for one only GDScript can convert.
 bool native_enc(const Decl &d, const Variant &v, Enc &e) {
 	Variant::Type vt = v.get_type();
 	e.kind = E_NATIVE;
@@ -318,7 +318,7 @@ bool read_ring(std::vector<int64_t> &ring, const PackedInt64Array &info, int64_t
 	return true;
 }
 
-// DotNetBehaviour._sync_view. A send older than the newest ack is promoted when its own tick
+// GSNetBehaviour._sync_view. A send older than the newest ack is promoted when its own tick
 // is in acked_ring (exact match, so a reused slot never promotes).
 void sync_view(View &v, int64_t acked_tick, const std::vector<int64_t> &acked_ring) {
 	v.last_ack = acked_tick;
@@ -352,7 +352,7 @@ void sync_view(View &v, int64_t acked_tick, const std::vector<int64_t> &acked_ri
 	}
 }
 
-// DotNetBehaviour._trim_view.
+// GSNetBehaviour._trim_view.
 void trim_view(View &v, int64_t oldest) {
 	size_t aged = 0;
 	while (aged < v.pending.size()) {
@@ -449,17 +449,17 @@ int64_t clamp_lead(int64_t v) {
 
 } // namespace
 
-DotNetNativeCore::DotNetNativeCore() {}
+GSNetNativeCore::GSNetNativeCore() {}
 
-DotNetNativeCore::~DotNetNativeCore() {
+GSNetNativeCore::~GSNetNativeCore() {
 	_set_workers(0);
 }
 
-int64_t DotNetNativeCore::abi_version() {
+int64_t GSNetNativeCore::abi_version() {
 	return 5;
 }
 
-void DotNetNativeCore::_set_workers(int workers) {
+void GSNetNativeCore::_set_workers(int workers) {
 	if (workers == int(_threads.size())) {
 		_workers = workers;
 		return;
@@ -476,11 +476,11 @@ void DotNetNativeCore::_set_workers(int workers) {
 	_quit = false;
 	_workers = workers;
 	for (int i = 0; i < workers; i++) {
-		_threads.emplace_back(&DotNetNativeCore::_worker_loop, this);
+		_threads.emplace_back(&GSNetNativeCore::_worker_loop, this);
 	}
 }
 
-void DotNetNativeCore::_worker_loop() {
+void GSNetNativeCore::_worker_loop() {
 	while (true) {
 		Job *job = nullptr;
 		{
@@ -497,13 +497,13 @@ void DotNetNativeCore::_worker_loop() {
 	}
 }
 
-void DotNetNativeCore::_mark_done(Job *job) {
+void GSNetNativeCore::_mark_done(Job *job) {
 	std::lock_guard<std::mutex> lock(_mutex);
 	job->done = true;
 	_done_jobs++;
 }
 
-bool DotNetNativeCore::_take_and_run() {
+bool GSNetNativeCore::_take_and_run() {
 	Job *job = nullptr;
 	{
 		std::lock_guard<std::mutex> lock(_mutex);
@@ -517,7 +517,7 @@ bool DotNetNativeCore::_take_and_run() {
 	return true;
 }
 
-void DotNetNativeCore::_adopt(BehRec *rec, Object *behaviour) {
+void GSNetNativeCore::_adopt(BehRec *rec, Object *behaviour) {
 	Array spec = behaviour->call("_native_spec");
 	rec->decls.clear();
 	rec->props.clear();
@@ -544,11 +544,11 @@ void DotNetNativeCore::_adopt(BehRec *rec, Object *behaviour) {
 	behaviour->set("_native_core", this);
 }
 
-// DotNetBehaviour._native_values without the GDScript call, for a behaviour whose scripts override none of
+// GSNetBehaviour._native_values without the GDScript call, for a behaviour whose scripts override none of
 // its hooks (rec->direct): each property as get() reads it, estimated_bits for the owner and anyone else (asked
 // again only when the declarations or the owner change; GDScript keeps them by declaration count too),
 // and the declaration count, or -1 once a core let go of the behaviour.
-Array DotNetNativeCore::_direct_values(BehRec *rec, Object *behaviour, int64_t owner) {
+Array GSNetNativeCore::_direct_values(BehRec *rec, Object *behaviour, int64_t owner) {
 	static const StringName native_core_name("_native_core");
 	static const StringName net_vars_name("net_vars");
 	static const StringName estimated_bits_name("estimated_bits");
@@ -576,11 +576,11 @@ Array DotNetNativeCore::_direct_values(BehRec *rec, Object *behaviour, int64_t o
 	return out;
 }
 
-void DotNetNativeCore::_mismatch(const char *what, Object *obj) {
+void GSNetNativeCore::_mismatch(const char *what, Object *obj) {
 	_read_mismatches++;
 	if (!_mismatch_logged) {
 		_mismatch_logged = true;
-		UtilityFunctions::push_error(String("DotNetNativeCore: direct ") + what + " differs from GDScript's for " +
+		UtilityFunctions::push_error(String("GSNetNativeCore: direct ") + what + " differs from GDScript's for " +
 				obj->get_class() + " (native_reads verify; GDScript's sent)");
 	}
 }
@@ -597,7 +597,7 @@ static bool same_values(const Array &a, const Array &b) {
 	return true;
 }
 
-Array DotNetNativeCore::_values(BehRec *rec, Object *behaviour, int64_t owner) {
+Array GSNetNativeCore::_values(BehRec *rec, Object *behaviour, int64_t owner) {
 	if (_read_mode == 0 || !rec->direct) {
 		return behaviour->call("_native_values");
 	}
@@ -613,8 +613,8 @@ Array DotNetNativeCore::_values(BehRec *rec, Object *behaviour, int64_t owner) {
 	return direct;
 }
 
-// DotNetIdentity.world_position, the frozen position read directly (the snapshot freezes them all first).
-Vector3 DotNetNativeCore::_position_of(Object *identity) {
+// GSNetIdentity.world_position, the frozen position read directly (the snapshot freezes them all first).
+Vector3 GSNetNativeCore::_position_of(Object *identity) {
 	static const StringName frozen_name("_position_frozen");
 	static const StringName frozen_position_name("_frozen_position");
 	static const StringName world_position_name("world_position");
@@ -632,7 +632,7 @@ Vector3 DotNetNativeCore::_position_of(Object *identity) {
 	return pos;
 }
 
-void DotNetNativeCore::_read(BehRec *rec, Object *behaviour, int64_t owner) {
+void GSNetNativeCore::_read(BehRec *rec, Object *behaviour, int64_t owner) {
 	Array values = _values(rec, behaviour, owner);
 	size_t n = rec->props.size();
 	if (values.size() != int64_t(n) + 3 || int64_t(values[n + 2]) != rec->decl_count) {
@@ -670,7 +670,7 @@ void DotNetNativeCore::_read(BehRec *rec, Object *behaviour, int64_t owner) {
 		if (native_enc(d, value, e)) {
 			continue;
 		}
-		// A custom codec, or a value DotNetVar.write converts in a way only GDScript knows: encoded
+		// A custom codec, or a value GSNetVar.write converts in a way only GDScript knows: encoded
 		// by GDScript now, at every bit of a byte it could start at when it may align.
 		_custom_reads++;
 		int pads = may_align(d.type) ? 8 : 1;
@@ -689,7 +689,7 @@ void DotNetNativeCore::_read(BehRec *rec, Object *behaviour, int64_t owner) {
 	}
 }
 
-BehRec *DotNetNativeCore::_behaviour_for(Object *behaviour, uint64_t id, int64_t owner) {
+BehRec *GSNetNativeCore::_behaviour_for(Object *behaviour, uint64_t id, int64_t owner) {
 	auto it = _behaviours.find(id);
 	BehRec *rec;
 	if (it == _behaviours.end()) {
@@ -716,7 +716,7 @@ BehRec *DotNetNativeCore::_behaviour_for(Object *behaviour, uint64_t id, int64_t
 	return rec;
 }
 
-IdRec *DotNetNativeCore::_identity_for(const Variant &identity) {
+IdRec *GSNetNativeCore::_identity_for(const Variant &identity) {
 	Object *obj = identity;
 	if (obj == nullptr) {
 		return nullptr;
@@ -787,7 +787,7 @@ IdRec *DotNetNativeCore::_identity_for(const Variant &identity) {
 	return rec;
 }
 
-IdRec *DotNetNativeCore::_known_identity(const Variant &identity) const {
+IdRec *GSNetNativeCore::_known_identity(const Variant &identity) const {
 	Object *obj = identity;
 	if (obj == nullptr) {
 		return nullptr;
@@ -799,7 +799,7 @@ IdRec *DotNetNativeCore::_known_identity(const Variant &identity) const {
 	return it->second.get();
 }
 
-void DotNetNativeCore::_drop_behaviour(BehRec *rec) {
+void GSNetNativeCore::_drop_behaviour(BehRec *rec) {
 	for (auto &it : _peers) {
 		Peer *peer = it.second.get();
 		if (rec->index < int(peer->views.size())) {
@@ -811,7 +811,7 @@ void DotNetNativeCore::_drop_behaviour(BehRec *rec) {
 	_behaviours.erase(rec->object_id);
 }
 
-void DotNetNativeCore::_sweep() {
+void GSNetNativeCore::_sweep() {
 	std::vector<BehRec *> dead;
 	for (auto &it : _behaviours) {
 		if (it.second->seen != _serial && ObjectDB::get_instance(it.first) == nullptr) {
@@ -830,7 +830,7 @@ void DotNetNativeCore::_sweep() {
 	}
 }
 
-void DotNetNativeCore::begin_snapshot(const Array &identities, const PackedInt64Array &params) {
+void GSNetNativeCore::begin_snapshot(const Array &identities, const PackedInt64Array &params) {
 	if (_open) {
 		finish_snapshot();
 	}
@@ -845,8 +845,8 @@ void DotNetNativeCore::begin_snapshot(const Array &identities, const PackedInt64
 	_authority_shared = params.size() > 5 ? params[5] : 1;
 	int64_t read_mode = params.size() > 6 ? params[6] : 1;
 	if (read_mode < 0 || read_mode > 2) {
-		// DotNetConfig.validate refuses this; a direct caller hears it every snapshot rather than a guess.
-		UtilityFunctions::push_error("DotNetNativeCore: read mode ", read_mode, " is not 0, 1 or 2; GDScript reads used");
+		// GSNetConfig.validate refuses this; a direct caller hears it every snapshot rather than a guess.
+		UtilityFunctions::push_error("GSNetNativeCore: read mode ", read_mode, " is not 0, 1 or 2; GDScript reads used");
 		read_mode = 0;
 	}
 	_read_mode = int(read_mode);
@@ -876,7 +876,7 @@ void DotNetNativeCore::begin_snapshot(const Array &identities, const PackedInt64
 	_last_read_usec = usec_now() - started;
 }
 
-Peer *DotNetNativeCore::_peer_for(int64_t peer_id) {
+Peer *GSNetNativeCore::_peer_for(int64_t peer_id) {
 	auto it = _peers.find(peer_id);
 	if (it == _peers.end()) {
 		auto made = std::make_unique<Peer>();
@@ -888,7 +888,7 @@ Peer *DotNetNativeCore::_peer_for(int64_t peer_id) {
 	return it->second.get();
 }
 
-bool DotNetNativeCore::_load_budget(BudgetStore &store, const Dictionary &accumulators, const Dictionary &starved_ticks) {
+bool GSNetNativeCore::_load_budget(BudgetStore &store, const Dictionary &accumulators, const Dictionary &starved_ticks) {
 	store.clear();
 	store.loaded = true;
 	bool ok = true;
@@ -915,11 +915,11 @@ bool DotNetNativeCore::_load_budget(BudgetStore &store, const Dictionary &accumu
 	return ok;
 }
 
-void DotNetNativeCore::export_budget(int64_t peer_id, Dictionary accumulators, Dictionary starved_ticks) {
-	ERR_FAIL_COND_MSG(_open, "DotNetNativeCore.export_budget inside a snapshot: the build threads are writing it.");
+void GSNetNativeCore::export_budget(int64_t peer_id, Dictionary accumulators, Dictionary starved_ticks) {
+	ERR_FAIL_COND_MSG(_open, "GSNetNativeCore.export_budget inside a snapshot: the build threads are writing it.");
 	auto it = _peers.find(peer_id);
 	ERR_FAIL_COND_MSG(it == _peers.end() || !it->second->budget.loaded,
-			"DotNetNativeCore.export_budget: that peer's budget was never loaded here (forgotten, or another core holds it).");
+			"GSNetNativeCore.export_budget: that peer's budget was never loaded here (forgotten, or another core holds it).");
 	const BudgetStore &store = it->second->budget;
 	accumulators.clear();
 	for (size_t s : store.acc_order) {
@@ -931,7 +931,7 @@ void DotNetNativeCore::export_budget(int64_t peer_id, Dictionary accumulators, D
 	}
 }
 
-void DotNetNativeCore::_queue(std::unique_ptr<Job> job) {
+void GSNetNativeCore::_queue(std::unique_ptr<Job> job) {
 	if (_workers == 0) {
 		_run_job(job.get());
 		job->done = true;
@@ -948,9 +948,9 @@ void DotNetNativeCore::_queue(std::unique_ptr<Job> job) {
 	_work_cv.notify_one();
 }
 
-void DotNetNativeCore::submit_peer(const Array &relevant, const PackedInt64Array &info, const Dictionary &accumulators, const Dictionary &starved_ticks) {
-	ERR_FAIL_COND_MSG(!_open, "DotNetNativeCore.submit_peer outside begin_snapshot/finish_snapshot.");
-	ERR_FAIL_COND_MSG(info.size() < 9, "DotNetNativeCore.submit_peer: info needs the acked ring size (ABI 4).");
+void GSNetNativeCore::submit_peer(const Array &relevant, const PackedInt64Array &info, const Dictionary &accumulators, const Dictionary &starved_ticks) {
+	ERR_FAIL_COND_MSG(!_open, "GSNetNativeCore.submit_peer outside begin_snapshot/finish_snapshot.");
+	ERR_FAIL_COND_MSG(info.size() < 9, "GSNetNativeCore.submit_peer: info needs the acked ring size (ABI 4).");
 	auto job = std::make_unique<Job>();
 	job->peer = _peer_for(info[0]);
 	job->acked_tick = info[1];
@@ -960,7 +960,7 @@ void DotNetNativeCore::submit_peer(const Array &relevant, const PackedInt64Array
 	job->send_lead = info[5] != 0;
 	job->lead_x = info[6];
 	job->lead_y = info[7];
-	ERR_FAIL_COND_MSG(!read_ring(job->acked_ring, info, 8), "DotNetNativeCore.submit_peer: the acked ring's size does not match info.");
+	ERR_FAIL_COND_MSG(!read_ring(job->acked_ring, info, 8), "GSNetNativeCore.submit_peer: the acked ring's size does not match info.");
 	job->accumulators = accumulators;
 	job->starved_ticks = starved_ticks;
 	job->relevant.reserve(relevant.size());
@@ -977,10 +977,10 @@ void DotNetNativeCore::submit_peer(const Array &relevant, const PackedInt64Array
 	_queue(std::move(job));
 }
 
-void DotNetNativeCore::submit_peer_interest(const Variant &observer, const PackedInt64Array &info, const Dictionary &accumulators, const Dictionary &starved_ticks) {
-	ERR_FAIL_COND_MSG(!_open, "DotNetNativeCore.submit_peer_interest outside begin_snapshot/finish_snapshot.");
-	ERR_FAIL_COND_MSG(!_icfg.on, "DotNetNativeCore.submit_peer_interest without set_interest.");
-	ERR_FAIL_COND_MSG(info.size() < 10, "DotNetNativeCore.submit_peer_interest: info needs the budget load flag and acked ring size (ABI 4).");
+void GSNetNativeCore::submit_peer_interest(const Variant &observer, const PackedInt64Array &info, const Dictionary &accumulators, const Dictionary &starved_ticks) {
+	ERR_FAIL_COND_MSG(!_open, "GSNetNativeCore.submit_peer_interest outside begin_snapshot/finish_snapshot.");
+	ERR_FAIL_COND_MSG(!_icfg.on, "GSNetNativeCore.submit_peer_interest without set_interest.");
+	ERR_FAIL_COND_MSG(info.size() < 10, "GSNetNativeCore.submit_peer_interest: info needs the budget load flag and acked ring size (ABI 4).");
 	auto job = std::make_unique<Job>();
 	job->peer = _peer_for(info[0]);
 	job->acked_tick = info[1];
@@ -990,15 +990,15 @@ void DotNetNativeCore::submit_peer_interest(const Variant &observer, const Packe
 	job->send_lead = info[5] != 0;
 	job->lead_x = info[6];
 	job->lead_y = info[7];
-	ERR_FAIL_COND_MSG(!read_ring(job->acked_ring, info, 9), "DotNetNativeCore.submit_peer_interest: the acked ring's size does not match info.");
+	ERR_FAIL_COND_MSG(!read_ring(job->acked_ring, info, 9), "GSNetNativeCore.submit_peer_interest: the acked ring's size does not match info.");
 	BudgetStore &store = job->peer->budget;
 	if (info[8] != 0) {
 		if (!_load_budget(store, accumulators, starved_ticks)) {
 			// Queued all the same, so finish_snapshot still returns one result per submit.
-			ERR_PRINT("DotNetNativeCore.submit_peer_interest: a budget key is not an int net_id; that peer's budget starts empty.");
+			ERR_PRINT("GSNetNativeCore.submit_peer_interest: a budget key is not an int net_id; that peer's budget starts empty.");
 		}
 	} else if (!store.loaded) {
-		ERR_PRINT("DotNetNativeCore.submit_peer_interest: load = 0 for a peer whose budget was never loaded (forgotten?); loading it now from dictionaries that may be stale.");
+		ERR_PRINT("GSNetNativeCore.submit_peer_interest: load = 0 for a peer whose budget was never loaded (forgotten?); loading it now from dictionaries that may be stale.");
 		_load_budget(store, accumulators, starved_ticks);
 	}
 	job->store = &store;
@@ -1014,8 +1014,8 @@ void DotNetNativeCore::submit_peer_interest(const Variant &observer, const Packe
 	_queue(std::move(job));
 }
 
-void DotNetNativeCore::set_interest(const Dictionary &cfg) {
-	ERR_FAIL_COND_MSG(_open, "DotNetNativeCore.set_interest inside a snapshot.");
+void GSNetNativeCore::set_interest(const Dictionary &cfg) {
+	ERR_FAIL_COND_MSG(_open, "GSNetNativeCore.set_interest inside a snapshot.");
 	InterestCfg c;
 	c.on = bool(cfg.get("on", false));
 	if (c.on) {
@@ -1060,9 +1060,9 @@ void DotNetNativeCore::set_interest(const Dictionary &cfg) {
 	_icfg = c;
 }
 
-// The tree of a DotNetVisibility.native_dict, or [param kept] when its serial is the one already copied:
+// The tree of a GSNetVisibility.native_dict, or [param kept] when its serial is the one already copied:
 // set_interest runs every snapshot and the arrays only change with the map.
-std::shared_ptr<const VisTree> DotNetNativeCore::_vis_tree(const Dictionary &d, const std::shared_ptr<const VisTree> &kept) {
+std::shared_ptr<const VisTree> GSNetNativeCore::_vis_tree(const Dictionary &d, const std::shared_ptr<const VisTree> &kept) {
 	int64_t serial = int64_t(d.get("serial", 0));
 	if (kept && kept->serial == serial) {
 		return kept;
@@ -1103,24 +1103,24 @@ std::shared_ptr<const VisTree> DotNetNativeCore::_vis_tree(const Dictionary &d, 
 	for (int32_t c : g->leaf_cluster) {
 		ok = ok && c < g->clusters;
 	}
-	ERR_FAIL_COND_V_MSG(!ok, nullptr, "DotNetNativeCore.set_interest: a malformed vis tree, ignored.");
+	ERR_FAIL_COND_V_MSG(!ok, nullptr, "GSNetNativeCore.set_interest: a malformed vis tree, ignored.");
 	return g;
 }
 
-bool DotNetNativeCore::visibility_supported() {
+bool GSNetNativeCore::visibility_supported() {
 	return true;
 }
 
-void DotNetNativeCore::expire_interest() {
-	ERR_FAIL_COND_MSG(_open, "DotNetNativeCore.expire_interest inside a snapshot.");
+void GSNetNativeCore::expire_interest() {
+	ERR_FAIL_COND_MSG(_open, "GSNetNativeCore.expire_interest inside a snapshot.");
 	for (auto &p : _peers) {
 		p.second->interest.at_ms = 0;
 	}
 }
 
-// DotNetInterestDistance.relevance, thin_into, scores_for, ranked and DotNetBudget.accumulate_record for one
+// GSNetInterestDistance.relevance, thin_into, scores_for, ranked and GSNetBudget.accumulate_record for one
 // peer, rule for rule; the arithmetic is done in the types GDScript does it in (float for Vector3, double else).
-void DotNetNativeCore::_interest_job(Job *job) {
+void GSNetNativeCore::_interest_job(Job *job) {
 	const InterestCfg &c = _icfg;
 	PeerInterest &pi = job->peer->interest;
 	const int64_t now = _now_ms;
@@ -1138,7 +1138,7 @@ void DotNetNativeCore::_interest_job(Job *job) {
 			}
 		}
 	} else {
-		// DotNetInterestDistance._evaluate_visible_into: the distance test, then the map's visibility.
+		// GSNetInterestDistance._evaluate_visible_into: the distance test, then the map's visibility.
 		const VisTree *vis = job->has_observer ? c.vis.get() : nullptr;
 		const int32_t from = vis ? vis->cluster_of(job->obs_pos) : -1;
 		const double audible2 = c.vis_audible * c.vis_audible;
@@ -1316,7 +1316,7 @@ void DotNetNativeCore::_interest_job(Job *job) {
 	job->relevant = std::move(relevant);
 }
 
-Array DotNetNativeCore::_result(Job *job) {
+Array GSNetNativeCore::_result(Job *job) {
 	_last_build_usec += job->usec;
 	Array payloads;
 	for (const std::vector<uint8_t> &p : job->payloads) {
@@ -1347,9 +1347,9 @@ Array DotNetNativeCore::_result(Job *job) {
 	return r;
 }
 
-Array DotNetNativeCore::take_ready() {
+Array GSNetNativeCore::take_ready() {
 	Array out;
-	ERR_FAIL_COND_V_MSG(!_open, out, "DotNetNativeCore.take_ready outside begin_snapshot/finish_snapshot.");
+	ERR_FAIL_COND_V_MSG(!_open, out, "GSNetNativeCore.take_ready outside begin_snapshot/finish_snapshot.");
 	const int64_t started = usec_now();
 	std::vector<Job *> ready;
 	while (true) {
@@ -1380,7 +1380,7 @@ Array DotNetNativeCore::take_ready() {
 	return out;
 }
 
-Array DotNetNativeCore::finish_snapshot() {
+Array GSNetNativeCore::finish_snapshot() {
 	Array out;
 	if (!_open) {
 		return out;
@@ -1413,8 +1413,8 @@ Array DotNetNativeCore::finish_snapshot() {
 	return out;
 }
 
-// DotNetBehaviour._collect_dirty, the per-peer rule: what the shared-set shortcut there gives too.
-uint64_t DotNetNativeCore::_collect(View &view, const BehRec &rec, int64_t peer_id, bool until_acked) const {
+// GSNetBehaviour._collect_dirty, the per-peer rule: what the shared-set shortcut there gives too.
+uint64_t GSNetNativeCore::_collect(View &view, const BehRec &rec, int64_t peer_id, bool until_acked) const {
 	uint64_t out = 0;
 	const Reads &reads = *rec.reads;
 	const int64_t owner = rec.owner;
@@ -1478,7 +1478,7 @@ uint64_t DotNetNativeCore::_collect(View &view, const BehRec &rec, int64_t peer_
 	return out;
 }
 
-void DotNetNativeCore::_write_value(BitWriter &w, const Decl &d, const Enc &e) const {
+void GSNetNativeCore::_write_value(BitWriter &w, const Decl &d, const Enc &e) const {
 	if (e.kind == E_PRE) {
 		const PreEncoded &pre = *e.pre;
 		int p = pre.pads == 8 ? int(w.bit_pos & 7) : 0;
@@ -1531,8 +1531,8 @@ void DotNetNativeCore::_write_value(BitWriter &w, const Decl &d, const Enc &e) c
 	}
 }
 
-// DotNetBehaviour.write_state: the set, then the record of it.
-void DotNetNativeCore::_write_state(BitWriter &w, View &view, const BehRec &rec, uint64_t mask) const {
+// GSNetBehaviour.write_state: the set, then the record of it.
+void GSNetNativeCore::_write_state(BitWriter &w, View &view, const BehRec &rec, uint64_t mask) const {
 	w.write_uint(popcount64(mask), 6);
 	uint64_t slots = 0;
 	uint64_t rated = 0;
@@ -1561,7 +1561,7 @@ void DotNetNativeCore::_write_state(BitWriter &w, View &view, const BehRec &rec,
 	view.pending.push_back(Entry{ _tick, slots, rec.reads });
 }
 
-int64_t DotNetNativeCore::_state_bits(const BehRec &rec, uint64_t mask, int64_t at) const {
+int64_t GSNetNativeCore::_state_bits(const BehRec &rec, uint64_t mask, int64_t at) const {
 	BitWriter w;
 	int pad = int(at & 7);
 	if (pad > 0) {
@@ -1576,15 +1576,15 @@ int64_t DotNetNativeCore::_state_bits(const BehRec &rec, uint64_t mask, int64_t 
 	return w.bit_length() - pad;
 }
 
-void DotNetNativeCore::_begin_part(BitWriter &w) const {
+void GSNetNativeCore::_begin_part(BitWriter &w) const {
 	w.reset();
 	w.bytes.reserve(size_t(_mtu) + 16);
 	w.write_uint(_tick, 32);
 	w.write_uint(0, 12);
 }
 
-// DotNetManager._build_peer, which is _send_to_peer on a worker.
-void DotNetNativeCore::_run_job(Job *job) {
+// GSNetManager._build_peer, which is _send_to_peer on a worker.
+void GSNetNativeCore::_run_job(Job *job) {
 	int64_t started = usec_now();
 	if (job->interest) {
 		_interest_job(job);
@@ -1606,7 +1606,7 @@ void DotNetNativeCore::_run_job(Job *job) {
 	const Variant zero_f = 0.0;
 	const Variant zero_i = int64_t(0);
 	BudgetStore *store = job->store;
-	// DotNetBudget.note_sent's two writes, into the store or the peer's dictionaries.
+	// GSNetBudget.note_sent's two writes, into the store or the peer's dictionaries.
 	auto reset = [&](int64_t net_id) {
 		if (store != nullptr) {
 			const size_t s = store->slot(net_id);
@@ -1748,13 +1748,13 @@ void DotNetNativeCore::_run_job(Job *job) {
 	job->usec = usec_now() - started;
 }
 
-void DotNetNativeCore::forget_peer(int64_t peer_id) {
-	ERR_FAIL_COND_MSG(_open, "DotNetNativeCore.forget_peer inside a snapshot.");
+void GSNetNativeCore::forget_peer(int64_t peer_id) {
+	ERR_FAIL_COND_MSG(_open, "GSNetNativeCore.forget_peer inside a snapshot.");
 	_peers.erase(peer_id);
 }
 
-void DotNetNativeCore::forget_view(Object *behaviour, int64_t peer_id) {
-	ERR_FAIL_COND_MSG(_open, "DotNetNativeCore.forget_view inside a snapshot.");
+void GSNetNativeCore::forget_view(Object *behaviour, int64_t peer_id) {
+	ERR_FAIL_COND_MSG(_open, "GSNetNativeCore.forget_view inside a snapshot.");
 	if (behaviour == nullptr) {
 		return;
 	}
@@ -1773,7 +1773,7 @@ void DotNetNativeCore::forget_view(Object *behaviour, int64_t peer_id) {
 	}
 }
 
-Dictionary DotNetNativeCore::_view_dict(const View &view, const BehRec &rec) const {
+Dictionary GSNetNativeCore::_view_dict(const View &view, const BehRec &rec) const {
 	auto values = [&rec](const std::vector<Val> &vals, uint64_t has) {
 		Dictionary d;
 		for (uint64_t m = has; m != 0; m &= m - 1) {
@@ -1809,7 +1809,7 @@ Dictionary DotNetNativeCore::_view_dict(const View &view, const BehRec &rec) con
 	return out;
 }
 
-Dictionary DotNetNativeCore::view_snapshot(Object *behaviour, int64_t peer_id) {
+Dictionary GSNetNativeCore::view_snapshot(Object *behaviour, int64_t peer_id) {
 	if (behaviour == nullptr) {
 		return Dictionary();
 	}
@@ -1825,7 +1825,7 @@ Dictionary DotNetNativeCore::view_snapshot(Object *behaviour, int64_t peer_id) {
 	return _view_dict(*peer->second->views[index], *it->second);
 }
 
-Dictionary DotNetNativeCore::view_state(Object *behaviour, int64_t peer_id) {
+Dictionary GSNetNativeCore::view_state(Object *behaviour, int64_t peer_id) {
 	if (behaviour == nullptr) {
 		return Dictionary();
 	}
@@ -1848,7 +1848,7 @@ Dictionary DotNetNativeCore::view_state(Object *behaviour, int64_t peer_id) {
 	return out;
 }
 
-Array DotNetNativeCore::encode_value(const PackedFloat64Array &spec, const Variant &value, int64_t pad) {
+Array GSNetNativeCore::encode_value(const PackedFloat64Array &spec, const Variant &value, int64_t pad) {
 	Array out;
 	Decl d = decl_from(spec);
 	Enc e;
@@ -1871,7 +1871,7 @@ Array DotNetNativeCore::encode_value(const PackedFloat64Array &spec, const Varia
 	return out;
 }
 
-Dictionary DotNetNativeCore::describe() {
+Dictionary GSNetNativeCore::describe() {
 	Dictionary out;
 	int64_t views = 0;
 	for (auto &p : _peers) {
@@ -1897,21 +1897,21 @@ Dictionary DotNetNativeCore::describe() {
 	return out;
 }
 
-void DotNetNativeCore::_bind_methods() {
-	ClassDB::bind_static_method("DotNetNativeCore", D_METHOD("abi_version"), &DotNetNativeCore::abi_version);
-	ClassDB::bind_static_method("DotNetNativeCore", D_METHOD("visibility_supported"), &DotNetNativeCore::visibility_supported);
-	ClassDB::bind_method(D_METHOD("begin_snapshot", "identities", "params"), &DotNetNativeCore::begin_snapshot);
-	ClassDB::bind_method(D_METHOD("submit_peer", "relevant", "info", "accumulators", "starved_ticks"), &DotNetNativeCore::submit_peer);
-	ClassDB::bind_method(D_METHOD("set_interest", "cfg"), &DotNetNativeCore::set_interest);
-	ClassDB::bind_method(D_METHOD("expire_interest"), &DotNetNativeCore::expire_interest);
-	ClassDB::bind_method(D_METHOD("submit_peer_interest", "observer", "info", "accumulators", "starved_ticks"), &DotNetNativeCore::submit_peer_interest);
-	ClassDB::bind_method(D_METHOD("finish_snapshot"), &DotNetNativeCore::finish_snapshot);
-	ClassDB::bind_method(D_METHOD("take_ready"), &DotNetNativeCore::take_ready);
-	ClassDB::bind_method(D_METHOD("forget_peer", "peer_id"), &DotNetNativeCore::forget_peer);
-	ClassDB::bind_method(D_METHOD("export_budget", "peer_id", "accumulators", "starved_ticks"), &DotNetNativeCore::export_budget);
-	ClassDB::bind_method(D_METHOD("forget_view", "behaviour", "peer_id"), &DotNetNativeCore::forget_view);
-	ClassDB::bind_method(D_METHOD("view_snapshot", "behaviour", "peer_id"), &DotNetNativeCore::view_snapshot);
-	ClassDB::bind_method(D_METHOD("view_state", "behaviour", "peer_id"), &DotNetNativeCore::view_state);
-	ClassDB::bind_method(D_METHOD("encode_value", "spec", "value", "pad"), &DotNetNativeCore::encode_value);
-	ClassDB::bind_method(D_METHOD("describe"), &DotNetNativeCore::describe);
+void GSNetNativeCore::_bind_methods() {
+	ClassDB::bind_static_method("GSNetNativeCore", D_METHOD("abi_version"), &GSNetNativeCore::abi_version);
+	ClassDB::bind_static_method("GSNetNativeCore", D_METHOD("visibility_supported"), &GSNetNativeCore::visibility_supported);
+	ClassDB::bind_method(D_METHOD("begin_snapshot", "identities", "params"), &GSNetNativeCore::begin_snapshot);
+	ClassDB::bind_method(D_METHOD("submit_peer", "relevant", "info", "accumulators", "starved_ticks"), &GSNetNativeCore::submit_peer);
+	ClassDB::bind_method(D_METHOD("set_interest", "cfg"), &GSNetNativeCore::set_interest);
+	ClassDB::bind_method(D_METHOD("expire_interest"), &GSNetNativeCore::expire_interest);
+	ClassDB::bind_method(D_METHOD("submit_peer_interest", "observer", "info", "accumulators", "starved_ticks"), &GSNetNativeCore::submit_peer_interest);
+	ClassDB::bind_method(D_METHOD("finish_snapshot"), &GSNetNativeCore::finish_snapshot);
+	ClassDB::bind_method(D_METHOD("take_ready"), &GSNetNativeCore::take_ready);
+	ClassDB::bind_method(D_METHOD("forget_peer", "peer_id"), &GSNetNativeCore::forget_peer);
+	ClassDB::bind_method(D_METHOD("export_budget", "peer_id", "accumulators", "starved_ticks"), &GSNetNativeCore::export_budget);
+	ClassDB::bind_method(D_METHOD("forget_view", "behaviour", "peer_id"), &GSNetNativeCore::forget_view);
+	ClassDB::bind_method(D_METHOD("view_snapshot", "behaviour", "peer_id"), &GSNetNativeCore::view_snapshot);
+	ClassDB::bind_method(D_METHOD("view_state", "behaviour", "peer_id"), &GSNetNativeCore::view_state);
+	ClassDB::bind_method(D_METHOD("encode_value", "spec", "value", "pad"), &GSNetNativeCore::encode_value);
+	ClassDB::bind_method(D_METHOD("describe"), &GSNetNativeCore::describe);
 }

@@ -24,17 +24,17 @@ var _sections_entered := 0
 var _sections_completed := 0
 
 
-class Mover extends DotNetBehaviour:
+class Mover extends GSNetBehaviour:
 	var position: Vector3 = Vector3.ZERO
 	var health: int = 100
 	var grounded: bool = true
 	var tag: String = ""
 
 	func _register_net_vars() -> void:
-		replicate(&"position", DotNetVar.Type.VECTOR3_POSITION)
-		replicate(&"health", DotNetVar.Type.UINT).bits(8)
-		replicate(&"grounded", DotNetVar.Type.BOOL)
-		replicate(&"tag", DotNetVar.Type.STRING)
+		replicate(&"position", GSNetVar.Type.VECTOR3_POSITION)
+		replicate(&"health", GSNetVar.Type.UINT).bits(8)
+		replicate(&"grounded", GSNetVar.Type.BOOL)
+		replicate(&"tag", GSNetVar.Type.STRING)
 
 
 ## One direction of the link. Datagram mode loses, repeats and reorders; stream mode only
@@ -86,8 +86,8 @@ class Link:
 
 ## Everything one run measured.
 class Rig:
-	var host: DotNetManager
-	var clients: Array[DotNetManager] = []
+	var host: GSNetManager
+	var clients: Array[GSNetManager] = []
 	var peers: Array[int] = []
 	var down: Dictionary = {}
 	var up: Dictionary = {}
@@ -103,7 +103,7 @@ class Rig:
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.ERROR)
+	GSLog.set_level(GSLog.Level.ERROR)
 	await _run()
 
 
@@ -154,13 +154,13 @@ func _build_mover(_context: Dictionary) -> Node:
 	return _make_entity().get_parent()
 
 
-func _make_entity() -> DotNetIdentity:
+func _make_entity() -> GSNetIdentity:
 	var body := Node3D.new()
 	body.name = "Entity"
-	var identity := DotNetIdentity.new()
+	var identity := GSNetIdentity.new()
 	identity.name = "NetIdentity"
 	identity.prefab_id = &"mover"
-	identity.authority = DotNetIdentity.Authority.SHARED
+	identity.authority = GSNetIdentity.Authority.SHARED
 	body.add_child(identity)
 	var mover := Mover.new()
 	mover.name = "Mover"
@@ -168,19 +168,19 @@ func _make_entity() -> DotNetIdentity:
 	identity.entity = body
 	identity.behaviours = [mover]
 	mover.identity = identity
-	mover._bind(DotNetConfig.new())
+	mover._bind(GSNetConfig.new())
 	return identity
 
 
-func _manager(label: String, server: bool, peer: int, mtu: int) -> DotNetManager:
-	var m := DotNetManager.new()
+func _manager(label: String, server: bool, peer: int, mtu: int) -> GSNetManager:
+	var m := GSNetManager.new()
 	m.name = label
 	m.is_server = server
 	m.service_scope = StringName(label.to_lower())
 	m.local_peer_id = peer
 	m.auto_tick = false
 	m.config_file = ""
-	m.config = DotNetConfig.new()
+	m.config = GSNetConfig.new()
 	m.config.tick_rate = TICK_RATE
 	m.config.snapshot_rate = SNAPSHOT_RATE
 	m.config.mtu = mtu
@@ -214,7 +214,7 @@ func _rig(seed_value: int, stream: bool, loss: float, duplicate: float, base: in
 		var index := rig.peers.find(peer_id)
 		if index < 0:
 			return
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			var _r := rig.clients[index].receive(payload, 1)
 			return
 		(rig.down[peer_id] as Link).push(rig.tick, payload)
@@ -228,7 +228,7 @@ func _rig(seed_value: int, stream: bool, loss: float, duplicate: float, base: in
 		client.spawner.register_factory(&"mover", _build_mover)
 	for i in entities:
 		var spawned := rig.host.spawner.spawn(&"mover", 0, Transform3D.IDENTITY, 0)
-		var identity: DotNetIdentity = spawned.value
+		var identity: GSNetIdentity = spawned.value
 		rig.server_side.append(identity.behaviours[0] as Mover)
 		var row: Array = []
 		for client in rig.clients:
@@ -447,7 +447,7 @@ func _stale_section() -> void:
 	rig.server_side[0].tag = "old"
 	var first_send := rig.host.send_fn
 	rig.host.send_fn = func(peer_id: int, payload: PackedByteArray, d: int) -> void:
-		if held.is_empty() and peer_id == 2 and d == DotNetMessage.Delivery.UNRELIABLE:
+		if held.is_empty() and peer_id == 2 and d == GSNetMessage.Delivery.UNRELIABLE:
 			held.append(payload)
 			return
 		first_send.call(peer_id, payload, d)
@@ -486,7 +486,7 @@ func _stats_section() -> void:
 	for _t in CHAOS_TICKS:
 		_step(rig, true)
 	var link: Link = rig.down[2]
-	var stats: DotNetStats = rig.clients[0].stats
+	var stats: GSNetStats = rig.clients[0].stats
 	var rate := stats.loss_rate()
 	var injected := float(link.dropped) / float(link.sent)
 	_check("loss inferred %.1f%% against %.1f%% injected" % [rate * 100.0, injected * 100.0],

@@ -1,7 +1,7 @@
 @tool
 extends Node
 
-## State and constants of [DotNetManager], in a base so the snapshot code can sit in files of
+## State and constants of [GSNetManager], in a base so the snapshot code can sit in files of
 ## their own. Nothing here is used on its own.
 
 const CHANNEL := "net"
@@ -9,8 +9,8 @@ const SERVICE := &"dot_net_manager"
 
 ## The most parts one snapshot is cut into, and the reason the part trailer is four bits a
 ## field. Entities that would need a seventeenth wait for the next snapshot.
-## Defined on [DotNetConfig] so the config does not name this class (the two parsers would hold each other).
-const MAX_SNAPSHOT_PARTS := DotNetConfig.MAX_SNAPSHOT_PARTS
+## Defined on [GSNetConfig] so the config does not name this class (the two parsers would hold each other).
+const MAX_SNAPSHOT_PARTS := GSNetConfig.MAX_SNAPSHOT_PARTS
 
 ## A split snapshot's trailer: the part's index and the part count less one, four bits each.
 const SNAPSHOT_PART_TRAILER_BITS := 8
@@ -34,7 +34,7 @@ const MAX_UNCHANGED_LISTED := 1 << 16
 
 ## The input lead a snapshot part may end with, after its trailer: the least arrival lead and the
 ## input tick measured on less the snapshot's tick, twelve signed bits each. Only to a client whose
-## schema says [constant DotNetMessageRegistry.FEATURE_INPUT_LEAD] (docs/wire.md#the-input-lead).
+## schema says [constant GSNetMessageRegistry.FEATURE_INPUT_LEAD] (docs/wire.md#the-input-lead).
 const INPUT_LEAD_FIELD_BITS := 12
 const INPUT_LEAD_BITS := 2 * INPUT_LEAD_FIELD_BITS
 
@@ -52,13 +52,13 @@ signal snapshot_sent(tick: int, peer_count: int)
 signal snapshot_applied(tick: int)
 
 ## Emitted when an entity is spawned or despawned, on every peer.
-signal entity_spawned(identity: DotNetIdentity)
+signal entity_spawned(identity: GSNetIdentity)
 signal entity_despawned(net_id: int)
 
 ## A peer's message schema cannot work with this one: a type one end REQUIRES that the other lacks.
 ## [param error] is CODE_VERSION with a readable sentence. GameSpice Net owns no connection and cannot drop
-## the peer, so the host (GameSpice Game's [code]DotGameNetcode[/code]) kicks with [code]error.message[/code].
-signal peer_schema_refused(peer_id: int, error: DotError)
+## the peer, so the host (GameSpice Game's [code]GSGameNetcode[/code]) kicks with [code]error.message[/code].
+signal peer_schema_refused(peer_id: int, error: GSError)
 
 @export_group("Role")
 
@@ -79,23 +79,23 @@ signal peer_schema_refused(peer_id: int, error: DotError)
 ## dedicated server with its own loop, or a test stepping deterministically).
 @export var auto_tick: bool = true
 
-## Suffix for this manager's [DotRegistry] name. Two managers in one process (a listen server, a
+## Suffix for this manager's [GSRegistry] name. Two managers in one process (a listen server, a
 ## test running both sides) would both claim [code]dot_net_manager[/code]; set "server" and "client"
-## so each registers under its own scoped name ([method DotRegistry.register_scoped]).
+## so each registers under its own scoped name ([method GSRegistry.register_scoped]).
 @export var service_scope: StringName = &""
 
 @export_group("Configuration")
 
-@export var config: DotNetConfig = null
+@export var config: GSNetConfig = null
 
 @export var config_file: String = "user://dot_net.json"
 
 @export_group("Strategies")
 
-## Interest rule. Defaults to [DotNetInterestDistance].
+## Interest rule. Defaults to [GSNetInterestDistance].
 ##
 ## Swap freely, including at runtime — the cache is invalidated on assignment.
-@export var interest: DotNetInterest = null:
+@export var interest: GSNetInterest = null:
 	set(value):
 		interest = value
 		if value != null:
@@ -104,23 +104,23 @@ signal peer_schema_refused(peer_id: int, error: DotError)
 @export_group("Wiring")
 
 ## Where to find or create the spawner.
-@export var spawner_ref: DotNodeRef = null
+@export var spawner_ref: GSNodeRef = null
 
-var clock: DotNetClock = null
-var registry: DotNetRegistry = null
-var spawner: DotNetSpawner = null
-var messages: DotNetMessageRegistry = null
-var budget: DotNetBudget = null
-var stats: DotNetStats = null
+var clock: GSNetClock = null
+var registry: GSNetRegistry = null
+var spawner: GSNetSpawner = null
+var messages: GSNetMessageRegistry = null
+var budget: GSNetBudget = null
+var stats: GSNetStats = null
 
 ## Client-side only.
-var interpolator: DotNetInterpolator = null
-var predictor: DotNetPredictor = null
+var interpolator: GSNetInterpolator = null
+var predictor: GSNetPredictor = null
 
 ## Server-side only.
-var history: DotNetHistory = null
+var history: GSNetHistory = null
 
-## How a payload reaches a peer: [code]func(peer_id: int, payload: PackedByteArray, delivery: DotNetMessage.Delivery)[/code].
+## How a payload reaches a peer: [code]func(peer_id: int, payload: PackedByteArray, delivery: GSNetMessage.Delivery)[/code].
 ## A peer id of 0 means broadcast. Set by the host; without it the manager simulates but sends
 ## nothing, which is what a single-player or replay session wants.
 var send_fn: Callable = Callable():
@@ -130,19 +130,19 @@ var send_fn: Callable = Callable():
 		if value != _delayed_send:
 			_send_fn = value
 
-## Artificial client latency (`cl_latency_baseline`), both directions. Idle unless [member DotNetLatency.requested] is set.
-var latency := DotNetLatency.new()
+## Artificial client latency (`cl_latency_baseline`), both directions. Idle unless [member GSNetLatency.requested] is set.
+var latency := GSNetLatency.new()
 
 var _send_fn: Callable = Callable()
 
-## peer_id -> DotNetInput.Buffer, on the server.
+## peer_id -> GSNetInput.Buffer, on the server.
 var _input_buffers: Dictionary = {}
 
 ## Local input history, on a client.
-var _local_inputs: DotNetInput.Buffer = null
+var _local_inputs: GSNetInput.Buffer = null
 
 ## net_id -> [identity, tick, values]: the newest snapshot's state for each predicted entity,
-## waiting for [method flush_reconcile] ([member DotNetConfig.reconcile_once_per_frame]).
+## waiting for [method flush_reconcile] ([member GSNetConfig.reconcile_once_per_frame]).
 var _pending_reconcile: Dictionary = {}
 
 ## Reconciliations a flush saved by keeping only the newest snapshot's, for [method describe].
@@ -162,7 +162,7 @@ var _perf_server_send_usec: int = 0
 var _perf_server_input_usec: int = 0
 var _perf_server_check_usec: int = 0
 var _perf_server_history_usec: int = 0
-## Where a snapshot's time goes, running wall-clock totals in microseconds: freeze and interest prepare, the shared property reads, per-peer relevance and ranking, per-peer build and send, thaw. See [method DotNetManager.perf_counters].
+## Where a snapshot's time goes, running wall-clock totals in microseconds: freeze and interest prepare, the shared property reads, per-peer relevance and ranking, per-peer build and send, thaw. See [method GSNetManager.perf_counters].
 var _ph_prepare_usec: int = 0
 var _ph_reads_usec: int = 0
 var _ph_interest_usec: int = 0
@@ -178,12 +178,12 @@ var _acks: Dictionary = {}
 ## peer_id -> every snapshot tick it has acknowledged lately, on the server: a PackedInt64Array
 ## holding tick t at t % size (-1 empty), sized from the ack window ([method _acked_ring_size]).
 ## Lets a view synced only now (its entity thinned out of the snapshots between) promote a send
-## whose own tick was acked instead of resending it. See [method DotNetManager.acked_ring].
+## whose own tick was acked instead of resending it. See [method GSNetManager.acked_ring].
 var _acked_rings: Dictionary = {}
 
 ## peer_id -> whether that peer has ever acknowledged anything. Acknowledgements are optional (the
 ## host owns the client-to-server path), so until one arrives an unconfirmed snapshot is assumed
-## delivered once it ages out of the window. See [DotNetBehaviour.PeerView].
+## delivered once it ages out of the window. See [GSNetBehaviour.PeerView].
 var _ack_wired: Dictionary = {}
 
 ## peer_id -> the newest snapshot tick when the peer was added. Server side.
@@ -194,7 +194,7 @@ var _starved_ticks: Dictionary = {}
 var _last_inputs: Dictionary = {}
 
 ## Input tick at which the newest snapshot arrived, and the ticks predicted on a held
-## input since (DotNetConfig.prediction_hold_sec). Client side.
+## input since (GSNetConfig.prediction_hold_sec). Client side.
 var _snapshot_heard_tick := -1
 var _held_ticks := 0
 
@@ -214,11 +214,11 @@ var _receiving_mask: int = 0
 var _receiving_total: int = 0
 
 ## Client side: the last few snapshot ticks seen, so a second part of a tick is not counted
-## by [DotNetStats] as a repeated or a recovered snapshot.
+## by [GSNetStats] as a repeated or a recovered snapshot.
 var _seen_ticks: Array[int] = []
 
 ## Server side: snapshots that went out in more than one part, and the largest part sent.
-## See [member DotNetConfig.mtu].
+## See [member GSNetConfig.mtu].
 var snapshots_split: int = 0
 var largest_part_bytes: int = 0
 
@@ -232,7 +232,7 @@ var unchanged_bytes_saved: int = 0
 ## [code]docs/wire.md#the-input-lead[/code].
 var input_leads_sent: int = 0
 
-## Whether the one warning about an entity too big for [member DotNetConfig.mtu] on its own
+## Whether the one warning about an entity too big for [member GSNetConfig.mtu] on its own
 ## has been logged. Once per manager: it is a property of the game's declarations, not of
 ## a moment, and a warning per snapshot would be twenty a second.
 var _warned_oversize: bool = false
@@ -243,13 +243,13 @@ var _warned_parts: bool = false
 ## Connected peers, on the server.
 var _peers: Array[int] = []
 
-## Why the last snapshot was built on this thread when [member DotNetConfig.snapshot_workers]
+## Why the last snapshot was built on this thread when [member GSNetConfig.snapshot_workers]
 ## asked for workers ("" when it was not), for the one log line per change and for
 ## [method describe_lines].
 var _snapshot_threads_reason: String = "off"
 var _snapshot_threads_note: String = ""
 
-## The native snapshot core ([DotNetNative]) while [member DotNetConfig.native] is on and it
+## The native snapshot core ([GSNetNative]) while [member GSNetConfig.native] is on and it
 ## loaded; [member _native_note] is what happened, for [method describe_lines].
 var _native: Object = null
 var _native_note: String = ""
@@ -278,8 +278,8 @@ var _test_skew_pooled: bool = false
 
 var _running: bool = false
 var _ticks_since_snapshot: int = 0
-var _reassembler := DotNetPacket.Reassembler.new()
-var _message_limiter: DotRateLimiter = null
+var _reassembler := GSNetPacket.Reassembler.new()
+var _message_limiter: GSRateLimiter = null
 
 
 ## When [method interpolate_frame] last ran, for the interpolation buffer's rate limit.
@@ -287,15 +287,15 @@ var _last_frame_usec: int = 0
 
 ## Observers frozen by [method _freeze_job] because they were registered after the tick's
 ## identity list was read; thawed with the rest.
-var _late_frozen: Array[DotNetIdentity] = []
+var _late_frozen: Array[GSNetIdentity] = []
 
 
-func _observer_for(peer_id: int) -> DotNetIdentity:
+func _observer_for(peer_id: int) -> GSNetIdentity:
 	var owned := registry.owned_by(peer_id)
 	return owned[0] if not owned.is_empty() else null
 
 
-func _delayed_send(peer_id: int, payload: PackedByteArray, delivery: DotNetMessage.Delivery) -> void:
+func _delayed_send(peer_id: int, payload: PackedByteArray, delivery: GSNetMessage.Delivery) -> void:
 	latency.hold(func() -> void:
 		if _send_fn.is_valid():
 			_send_fn.call(peer_id, payload, delivery))
@@ -303,7 +303,7 @@ func _delayed_send(peer_id: int, payload: PackedByteArray, delivery: DotNetMessa
 
 ## The ticks [param peer_id] has acknowledged lately: tick t sits at [code]t % size()[/code], an
 ## empty slot is -1, and an empty array means none recorded. Server side. Every view sync reads it
-## ([method DotNetBehaviour.sync_peer_acks]) so that a send is promoted when its own snapshot was
+## ([method GSNetBehaviour.sync_peer_acks]) so that a send is promoted when its own snapshot was
 ## acked, not only when it is the newest ack: a view is synced only when its entity is collected.
 func acked_ring(peer_id: int) -> PackedInt64Array:
 	var ring: Variant = _acked_rings.get(peer_id)

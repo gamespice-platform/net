@@ -1,19 +1,19 @@
 @tool
 extends "dot_net_behaviour_state.gd"
 
-## The per-peer half of [DotNetBehaviour]: what each peer is believed to hold, acked, trimmed and forgotten.
+## The per-peer half of [GSNetBehaviour]: what each peer is believed to hold, acked, trimmed and forgotten.
 
-## The manager's native snapshot core ([DotNetNative]) once it holds this behaviour's send
+## The manager's native snapshot core ([GSNetNative]) once it holds this behaviour's send
 ## records, so that the record methods answer from it. Set by the core.
 var _native_core: Object = null
 
 
 ## Resolves this peer's unconfirmed sends against the tick it has acknowledged. Called by
-## [DotNetManager] just before [method collect_dirty], not pushed to every behaviour on each ack (a
+## [GSNetManager] just before [method collect_dirty], not pushed to every behaviour on each ack (a
 ## full registry sweep per ack).
 ##
 ## [param acked_ring] is the peer's record of every snapshot tick it acknowledged
-## ([method DotNetManager.acked_ring]): an unconfirmed send older than [param acked_tick] whose own tick
+## ([method GSNetManager.acked_ring]): an unconfirmed send older than [param acked_tick] whose own tick
 ## is in it was applied and is promoted, not resent. Empty: only [param acked_tick] itself counts.
 func sync_peer_acks(
 	peer_id: int,

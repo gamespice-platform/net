@@ -7,7 +7,7 @@ extends "netcode_snapshot_threads_and_inputs.gd"
 func _cover_stalls_cold_and_live() -> void:
 	# Cold start: a stall before any untouched sample leaves no median to hold near, and the
 	# first real round trips must not be pinned at 250 ms.
-	var cold := DotNetClock.new(64)
+	var cold := GSNetClock.new(64)
 	cold.follow_engine_time = false
 	var frame := 1
 	var wall := 15625
@@ -25,7 +25,7 @@ func _cover_stalls_cold_and_live() -> void:
 		cold.rtt_ms() > 500.0)
 
 	# A stall inside a live lead history, then the link's real round trip again.
-	var live := DotNetClock.new(64)
+	var live := GSNetClock.new(64)
 	live.follow_engine_time = false
 	live.sync_from_server(1000, 88.0)
 	frame = 0
@@ -80,7 +80,7 @@ func _test_cover_stalls() -> void:
 	# jumped 640 ahead (lead 651) and snapped back a second later.
 	for rate in [60, 64, 128]:
 		var seen := {"lead_max": -999, "lead_min": 999}
-		var watch := func(clock: DotNetClock, ms: float) -> void:
+		var watch := func(clock: GSNetClock, ms: float) -> void:
 			if clock.is_synced():
 				var lead := clock.tick - clock.received_tick()
 				seen["lead_max"] = maxi(int(seen["lead_max"]), lead)
@@ -102,7 +102,7 @@ func _test_join_hitch() -> void:
 	_sections_entered += 1
 	print("")
 	print("[a short hitch after joining, and a clock pushed too far ahead]")
-	var slack := DotNetConfig.new().input_lead_slack_ticks
+	var slack := GSNetConfig.new().input_lead_slack_ticks
 	# The most ticks early any command reached the server in [from, to) ms after the hitch.
 	var most_early := func(r: Dictionary, from: float, to: float) -> int:
 		var most := -999
@@ -136,7 +136,7 @@ func _test_join_hitch() -> void:
 	# Pushed 100 ticks ahead at 128 (0.78 s, short of a snap): slowed at the drift rate, 6.4
 	# ticks a second, it took 16 s to come back.
 	var pushed := {"done": false}
-	var nudge := func(clock: DotNetClock, ms: float) -> void:
+	var nudge := func(clock: GSNetClock, ms: float) -> void:
 		if ms >= 0.0 and not pushed["done"]:
 			pushed["done"] = true
 			clock.tick += 100
@@ -155,19 +155,19 @@ func _adopt_tick_rate_checks() -> void:
 	# adopt_tick_rate: raises the cap to a quarter second of ticks, never lowers a higher one.
 	var rate_was := Engine.physics_ticks_per_second
 	Engine.max_physics_steps_per_frame = 8
-	DotNetClock.adopt_tick_rate(128)
+	GSNetClock.adopt_tick_rate(128)
 	_check("adopt_tick_rate(128) sets the rate and a 32 step cap (%d Hz, %d)" % [
 		Engine.physics_ticks_per_second, Engine.max_physics_steps_per_frame],
 		Engine.physics_ticks_per_second == 128 and Engine.max_physics_steps_per_frame == 32)
 	Engine.max_physics_steps_per_frame = 100
-	DotNetClock.adopt_tick_rate(128)
+	GSNetClock.adopt_tick_rate(128)
 	_check("and never lowers a higher cap (%d)" % Engine.max_physics_steps_per_frame,
 		Engine.max_physics_steps_per_frame == 100)
 	Engine.max_physics_steps_per_frame = 8
-	DotNetClock.adopt_tick_rate(60)
+	GSNetClock.adopt_tick_rate(60)
 	_check("60 Hz needs 15 steps (%d)" % Engine.max_physics_steps_per_frame,
 		Engine.max_physics_steps_per_frame == 15)
-	DotNetClock.adopt_tick_rate(0)
+	GSNetClock.adopt_tick_rate(0)
 	_check("a rate of 0 changes nothing (%d Hz)" % Engine.physics_ticks_per_second,
 		Engine.physics_ticks_per_second == 60)
 	Engine.physics_ticks_per_second = rate_was
@@ -186,12 +186,12 @@ func _test_dropped_time_live() -> void:
 	var rate := Engine.physics_ticks_per_second
 	# The sections before free their managers at the end of the frame.
 	await get_tree().process_frame
-	var alone := not DotNetClock.server_in_process()
+	var alone := not GSNetClock.server_in_process()
 
 	# Half a second inside one physics step, while [param clock] is advanced once a step: the
 	# engine runs its cap of steps after it and drops the rest. Returns the ticks the clock ran
 	# from the stall on, and the wall time that passed, in ticks.
-	var stall := func(clock: DotNetClock) -> Vector2:
+	var stall := func(clock: GSNetClock) -> Vector2:
 		clock.sync_from_server(1000, 40.0)
 		for _i in 10:
 			await get_tree().physics_frame
@@ -204,15 +204,15 @@ func _test_dropped_time_live() -> void:
 			var _a := clock.advance(1.0 / float(rate))
 		return Vector2(clock.tick - before, float(Time.get_ticks_usec() - wall) / 1000000.0 * float(rate))
 
-	var remote := DotNetClock.new(rate)
+	var remote := GSNetClock.new(rate)
 	var remote_ran: Vector2 = await stall.call(remote)
 	# The server's clock in this process, alive through the second stall.
-	var beside := DotNetClock.new(rate, true)
-	var listen := DotNetClock.new(rate)
+	var beside := GSNetClock.new(rate, true)
+	var listen := GSNetClock.new(rate)
 	var listen_ran: Vector2 = await stall.call(listen)
-	var server_seen := DotNetClock.server_in_process()
+	var server_seen := GSNetClock.server_in_process()
 	beside = null
-	var by_hand := DotNetClock.new(rate)
+	var by_hand := GSNetClock.new(rate)
 	by_hand.sync_from_server(1000, 40.0)
 	OS.delay_msec(200)
 	for _i in 30:
@@ -234,8 +234,8 @@ func _test_dropped_time_live() -> void:
 		server_seen and listen.lost_seconds() == 0.0)
 	_check("a clock advanced by hand credits nothing (%d ms)" % int(by_hand.lost_seconds() * 1000.0),
 		by_hand.lost_seconds() == 0.0)
-	_check("and the count of servers in this process goes back down (%s)" % DotNetClock.server_in_process(),
-		alone and not DotNetClock.server_in_process())
+	_check("and the count of servers in this process goes back down (%s)" % GSNetClock.server_in_process(),
+		alone and not GSNetClock.server_in_process())
 	_adopt_tick_rate_checks()
 	Engine.max_physics_steps_per_frame = cap_was
 	_sections_completed += 1
@@ -254,13 +254,13 @@ func _test_integration() -> void:
 	var spawned := server.spawner.spawn(&"player", 2, Transform3D.IDENTITY, 0)
 	_check("server spawned", spawned.ok)
 
-	var server_entity: DotNetIdentity = spawned.value
+	var server_entity: GSNetIdentity = spawned.value
 	var mirrored := client.spawner.spawn_remote(
 		&"player", server_entity.net_id, 2, Transform3D.IDENTITY, 0
 	)
 	_check("client mirrored the spawn", mirrored.ok)
 
-	var client_entity: DotNetIdentity = mirrored.value
+	var client_entity: GSNetIdentity = mirrored.value
 	_check("ids match", client_entity.net_id == server_entity.net_id)
 	_check("client knows it owns it", client_entity.is_owner)
 
@@ -347,7 +347,7 @@ func _integration_link() -> void:
 			return
 		# The reliable route: the schema table, which the client decodes as a message.
 		# Never dropped -- a reliable channel is one that does not lose things.
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			var into := client.receive(payload, 1)
 			_check("the client adopts the server's schema table", into.ok)
 			return
@@ -366,10 +366,10 @@ func _integration_link() -> void:
 
 ## Ninety ticks of the server's snapshots reaching [param c] four ticks late, the mirror spawned
 ## at tick 30; returns the mirror.
-func _drive_late_mirror(s: DotNetManager, c: DotNetManager, held: Array[PackedByteArray], server_vars: ObserverVars, server_entity: DotNetIdentity) -> DotNetIdentity:
+func _drive_late_mirror(s: GSNetManager, c: GSNetManager, held: Array[PackedByteArray], server_vars: ObserverVars, server_entity: GSNetIdentity) -> GSNetIdentity:
 	var later: Array = []
 	var acks: Array = []
-	var client_entity: DotNetIdentity = null
+	var client_entity: GSNetIdentity = null
 	for tick in range(1, 91):
 		server_vars.wobble = tick % 200
 		s.server_tick(tick)
@@ -415,7 +415,7 @@ func _test_late_mirror_observer_vars() -> void:
 	s.send_fn = func(peer_id: int, payload: PackedByteArray, d: int) -> void:
 		if peer_id != 2:
 			return
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			c.receive(payload, 1)
 		else:
 			held.append(payload)
@@ -427,7 +427,7 @@ func _test_late_mirror_observer_vars() -> void:
 	c.spawner.register_factory(&"mirror", _build_mirror)
 
 	# Owned by peer 3, so peer 2 observes it.
-	var server_entity: DotNetIdentity = s.spawner.spawn(&"mirror", 3, Transform3D.IDENTITY, 0).value
+	var server_entity: GSNetIdentity = s.spawner.spawn(&"mirror", 3, Transform3D.IDENTITY, 0).value
 	var server_vars := server_entity.behaviours[1] as ObserverVars
 	server_vars.alive = true
 	server_vars.hp = 87
@@ -457,8 +457,8 @@ func _test_freed_entity() -> void:
 	print("")
 	print("[freed entity]")
 
-	var config := DotNetConfig.new()
-	var registry := DotNetRegistry.new(true, 1)
+	var config := GSNetConfig.new()
+	var registry := GSNetRegistry.new(true, 1)
 	var kept := _make_entity(&"player", 2)
 	var freed := _make_entity(&"player", 3)
 	registry.register(kept, 0, 1, config)
@@ -488,14 +488,14 @@ func _test_unregistered_mid_tick() -> void:
 	print("")
 	print("[unregistered mid-tick]")
 
-	var host := DotNetManager.new()
+	var host := GSNetManager.new()
 	host.name = "MidTickHost"
 	host.is_server = true
 	host.service_scope = &"midtick"
 	host.local_peer_id = 1
 	host.auto_tick = false
 	host.config_file = ""
-	host.config = DotNetConfig.new()
+	host.config = GSNetConfig.new()
 	host.config.tick_rate = 60
 	host.config.snapshot_rate = 60
 	add_child(host)
@@ -503,7 +503,7 @@ func _test_unregistered_mid_tick() -> void:
 
 	var sent := [0]
 	host.send_fn = func(_peer_id: int, _payload: PackedByteArray, d: int) -> void:
-		if d == DotNetMessage.Delivery.UNRELIABLE:
+		if d == GSNetMessage.Delivery.UNRELIABLE:
 			sent[0] += 1
 	host.start()
 	host.add_peer(2)
@@ -549,21 +549,21 @@ func _test_unregistered_mid_tick() -> void:
 
 ## The input history is a derived quantity and is raised, not warned about.
 ## The two counts the wire carries in 6 bits refuse past 63 with an error, rather than a 64th
-## being sent as 0 (DotNetWriter masks silently) and aliasing the first.
+## being sent as 0 (GSNetWriter masks silently) and aliasing the first.
 func _test_count_limits() -> void:
 	print("count limits")
 	var errors := EngineErrors.new()
 	OS.add_logger(errors)
 
 	var many := Movement.new()
-	many._bind(DotNetConfig.new())
+	many._bind(GSNetConfig.new())
 	var before := many.net_vars.size()
 	for i in range(70):
-		var _v := many.replicate(StringName("extra_%d" % i), DotNetVar.Type.UINT)
+		var _v := many.replicate(StringName("extra_%d" % i), GSNetVar.Type.UINT)
 	_check("a behaviour keeps 63 replicated properties and refuses the rest", many.net_vars.size() == 63 and before < 63)
 
 	var body := Node3D.new()
-	var identity := DotNetIdentity.new()
+	var identity := GSNetIdentity.new()
 	body.add_child(identity)
 	for i in range(66):
 		var b := Movement.new()
@@ -581,7 +581,7 @@ func _test_count_limits() -> void:
 
 func _test_config_sizing() -> void:
 	print("config sizing")
-	var config := DotNetConfig.new()
+	var config := GSNetConfig.new()
 	config.tick_rate = 128
 	config.input_history_ticks = 8
 	var valid := config.validate()
@@ -590,7 +590,7 @@ func _test_config_sizing() -> void:
 		"and its input history has been raised to cover it",
 		config.input_history_ticks >= int(config.max_rewind_sec * 128.0) * 2
 	)
-	var parts := DotNetConfig.new()
+	var parts := GSNetConfig.new()
 	_check("max_snapshot_parts defaults to 16 and 0 means the wire's 16",
 		parts.max_snapshot_parts == 16 and parts.snapshot_part_cap() == 16 and parts.validate().ok)
 	parts.max_snapshot_parts = 0
@@ -611,10 +611,10 @@ func _test_spawning() -> void:
 	print("")
 	print("[spawning]")
 
-	var config := DotNetConfig.new()
-	var registry := DotNetRegistry.new(true, 1)
+	var config := GSNetConfig.new()
+	var registry := GSNetRegistry.new(true, 1)
 
-	var spawner := DotNetSpawner.new()
+	var spawner := GSNetSpawner.new()
 	spawner.name = "Spawner"
 	spawner.setup(registry, config)
 	add_child(spawner)
@@ -631,36 +631,36 @@ func _test_spawning() -> void:
 	_sections_completed += 1
 
 
-func _spawning_registration(spawner: DotNetSpawner, good: PackedScene, identity_less: PackedScene) -> void:
+func _spawning_registration(spawner: GSNetSpawner, good: PackedScene, identity_less: PackedScene) -> void:
 	_check("empty id refused", not spawner.register_prefab(&"", good).ok)
 	_check("null scene refused", not spawner.register_prefab(&"nothing", null).ok)
 
 	var no_identity := spawner.register_prefab(&"broken", identity_less)
 	_check(
 		"a scene with no identity is refused at registration",
-		not no_identity.ok and no_identity.error.code == DotError.CODE_INVALID
+		not no_identity.ok and no_identity.error.code == GSError.CODE_INVALID
 	)
 
 	_check("prefab registered", spawner.register_prefab(&"player", good).ok)
 	var again := spawner.register_prefab(&"player", good)
 	_check(
 		"a duplicate id is refused",
-		not again.ok and again.error.code == DotError.CODE_STATE
+		not again.ok and again.error.code == GSError.CODE_STATE
 	)
 	_check("prefab is known", spawner.has_prefab(&"player"))
 
 
-func _spawning_allow_list(spawner: DotNetSpawner, registry: DotNetRegistry) -> void:
+func _spawning_allow_list(spawner: GSNetSpawner, registry: GSNetRegistry) -> void:
 	# The allow-list property: an id nobody registered cannot name anything.
 	var unknown := spawner.spawn(&"res://addons/dot_net/plugin.cfg", 1)
 	_check(
 		"an unregistered id cannot be spawned",
-		not unknown.ok and unknown.error.code == DotError.CODE_INVALID
+		not unknown.ok and unknown.error.code == GSError.CODE_INVALID
 	)
 
 	var spawned := spawner.spawn(&"player", 7, Transform3D(Basis(), Vector3(3, 0, 4)))
 	_check("spawned", spawned.ok)
-	var live := spawned.value as DotNetIdentity
+	var live := spawned.value as GSNetIdentity
 	_check("registered on spawn", registry.get_identity(live.net_id) == live)
 	_check("owner recorded", live.owner_peer_id == 7)
 	_check("prefab recorded", live.prefab_id == &"player")
@@ -673,10 +673,10 @@ func _spawning_allow_list(spawner: DotNetSpawner, registry: DotNetRegistry) -> v
 	)
 
 
-func _spawning_client_refused(config: DotNetConfig, good: PackedScene) -> void:
+func _spawning_client_refused(config: GSNetConfig, good: PackedScene) -> void:
 	# A client may not invent entities, and may not invent ids either.
-	var client_registry := DotNetRegistry.new(false, 2)
-	var client_spawner := DotNetSpawner.new()
+	var client_registry := GSNetRegistry.new(false, 2)
+	var client_spawner := GSNetSpawner.new()
 	client_spawner.name = "ClientSpawner"
 	client_spawner.setup(client_registry, config)
 	add_child(client_spawner)
@@ -685,7 +685,7 @@ func _spawning_client_refused(config: DotNetConfig, good: PackedScene) -> void:
 	var refused := client_spawner.spawn(&"player", 2)
 	_check(
 		"only the authority spawns",
-		not refused.ok and refused.error.code == DotError.CODE_FORBIDDEN
+		not refused.ok and refused.error.code == GSError.CODE_FORBIDDEN
 	)
 	_check(
 		"a remote spawn needs the server's id",
@@ -695,10 +695,10 @@ func _spawning_client_refused(config: DotNetConfig, good: PackedScene) -> void:
 		&"player", 4242, 2, Transform3D.IDENTITY, 0
 	)
 	_check("remote spawn uses the id it was given",
-		remote.ok and (remote.value as DotNetIdentity).net_id == 4242)
+		remote.ok and (remote.value as GSNetIdentity).net_id == 4242)
 
 
-func _spawning_pooled(spawner: DotNetSpawner, registry: DotNetRegistry) -> void:
+func _spawning_pooled(spawner: GSNetSpawner, registry: GSNetRegistry) -> void:
 	_pool.clear()
 	_pool_context = {}
 	_pool_parent = Node.new()
@@ -733,7 +733,7 @@ func _spawning_pooled(spawner: DotNetSpawner, registry: DotNetRegistry) -> void:
 	# same one back the next time the id is spawned. The spawner is handed a node
 	# that is already parented — by the spawner itself, on the previous spawn.
 	spawner.free_on_despawn = false
-	var pooled_identity := first.value as DotNetIdentity
+	var pooled_identity := first.value as GSNetIdentity
 	var pooled_node := pooled_identity.entity
 	var pooled_id := pooled_identity.net_id
 
@@ -753,7 +753,7 @@ func _spawning_pooled(spawner: DotNetSpawner, registry: DotNetRegistry) -> void:
 	_check("pooled node reused", _pool_reused == 1)
 	_check("respawn from the pool", second.ok,)
 	if second.ok:
-		var reborn := second.value as DotNetIdentity
+		var reborn := second.value as GSNetIdentity
 		_check("reused node is registered", registry.get_identity(reborn.net_id) == reborn)
 		_check("reused node moved into the container",
 			reborn.entity.get_parent() != null
@@ -778,11 +778,11 @@ func _spawning_pooled(spawner: DotNetSpawner, registry: DotNetRegistry) -> void:
 	_check("peer 7 owns nothing", registry.owned_by(7).is_empty())
 
 
-func _spawning_declared(registry: DotNetRegistry, config: DotNetConfig, good: PackedScene, identity_less: PackedScene) -> void:
+func _spawning_declared(registry: GSNetRegistry, config: GSNetConfig, good: PackedScene, identity_less: PackedScene) -> void:
 	# register_prefab's contract is that a prefab with no identity is a *startup* error, not a
 	# silently non-networked spawn. The inspector path must honour it too, or the guarantee
 	# only holds for games that register in code.
-	var declared := DotNetSpawner.new()
+	var declared := GSNetSpawner.new()
 	declared.name = "DeclaredSpawner"
 	declared.prefabs = {"good": good, "bad": identity_less}
 	declared.setup(registry, config)

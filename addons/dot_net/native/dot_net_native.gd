@@ -1,14 +1,14 @@
-class_name DotNetNative
+class_name GSNetNative
 extends RefCounted
-## Loads GameSpice Net's optional native snapshot library and makes a [code]DotNetNativeCore[/code] for
-## a server's [DotNetManager] when [member DotNetConfig.native] asks for one. Never required: on
+## Loads GameSpice Net's optional native snapshot library and makes a [code]GSNetNativeCore[/code] for
+## a server's [GSNetManager] when [member GSNetConfig.native] asks for one. Never required: on
 ## any failure the GDScript path runs and the reason is logged once. See docs/native.md.
 
 const CHANNEL := "net.native"
 
 ## The library's [code]abi_version()[/code] this GDScript was written against.
 const ABI := 5
-const CORE_CLASS := &"DotNetNativeCore"
+const CORE_CLASS := &"GSNetNativeCore"
 const ADDON_CFG := "res://addons/dot_net/native/dot_net_native.cfg"
 const EXE_DIR_CFG := "dot_net_native/dot_net_native.cfg"
 
@@ -19,23 +19,23 @@ static var _reason := ""
 
 
 ## A new core for one manager, or the reason there is none.
-static func make_core(config: DotNetConfig) -> DotResult:
+static func make_core(config: GSNetConfig) -> GSResult:
 	var res := load_library(config.native_path if config != null else "")
 	if not res.ok:
 		return res
-	return DotResult.success(ClassDB.instantiate(CORE_CLASS))
+	return GSResult.success(ClassDB.instantiate(CORE_CLASS))
 
 
 ## Loads the library once per process. [param path] is a [code].cfg[/code]; empty tries the
 ## addon's own, then one next to the executable.
-static func load_library(path: String = "") -> DotResult:
+static func load_library(path: String = "") -> GSResult:
 	if ClassDB.class_exists(CORE_CLASS):
 		return _check_abi()
 	if _attempted:
-		return DotResult.fail(DotError.CODE_UNSUPPORTED, _reason)
+		return GSResult.fail(GSError.CODE_UNSUPPORTED, _reason)
 	_attempted = true
-	if not DotPlatform.is_desktop():
-		return _refuse("native snapshots need a desktop or server build (%s)" % DotPlatform.kind_name())
+	if not GSPlatform.is_desktop():
+		return _refuse("native snapshots need a desktop or server build (%s)" % GSPlatform.kind_name())
 	var candidates: PackedStringArray = []
 	if not path.is_empty():
 		candidates.append(path)
@@ -59,7 +59,7 @@ static func load_library(path: String = "") -> DotResult:
 				_loaded_from = file
 				return _check_abi()
 		skipped.append("%s: did not load (status %d)" % [file, status])
-	DotLog.debug(CHANNEL, "no native snapshot library loaded", {"tried": skipped})
+	GSLog.debug(CHANNEL, "no native snapshot library loaded", {"tried": skipped})
 	return _refuse("no native library loaded (%s); build it with addons/dot_net/native/build.sh" % "; ".join(skipped))
 
 
@@ -80,17 +80,17 @@ static func _library_for_platform(cfg: String) -> String:
 	return ""
 
 
-static func _check_abi() -> DotResult:
+static func _check_abi() -> GSResult:
 	var abi := int(ClassDB.class_call_static(CORE_CLASS, &"abi_version"))
 	if abi != ABI:
 		_reason = "the native library is ABI %d, this dot-net wants %d; rebuild it" % [abi, ABI]
-		return DotResult.fail(DotError.CODE_VERSION, _reason)
-	return DotResult.success(_loaded_from)
+		return GSResult.fail(GSError.CODE_VERSION, _reason)
+	return GSResult.success(_loaded_from)
 
 
-static func _refuse(reason: String) -> DotResult:
+static func _refuse(reason: String) -> GSResult:
 	_reason = reason
-	return DotResult.fail(DotError.CODE_UNSUPPORTED, reason)
+	return GSResult.fail(GSError.CODE_UNSUPPORTED, reason)
 
 
 static func describe() -> Dictionary:

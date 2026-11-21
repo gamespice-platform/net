@@ -1,6 +1,6 @@
 @tool
-class_name DotNetInterestDistance
-extends DotNetInterest
+class_name GSNetInterestDistance
+extends GSNetInterest
 
 ## Replicates entities within a radius of the observer. The simplest useful strategy, and enough for
 ## most games.
@@ -12,7 +12,7 @@ extends DotNetInterest
 @export var radius_by_tag: Dictionary = {}
 
 ## Entities with any of these tags are always replicated. For categories rather than individuals —
-## [member DotNetIdentity.always_relevant] covers a single entity, this covers "every objective".
+## [member GSNetIdentity.always_relevant] covers a single entity, this covers "every objective".
 @export var always_tags: PackedStringArray = PackedStringArray()
 
 ## Use squared distance and skip the square root. Free correctness-preserving speedup; off only if a
@@ -22,7 +22,7 @@ extends DotNetInterest
 ## The map's potentially visible set: an in-range entity is dropped when nothing in the observer's cluster could see its cluster; null is
 ## distance only. Owned, always-relevant and [member always_tags] entities are never dropped. Cuts what a wall hides (on an indoor map smaller
 ## than [member radius] the only cut); [method invalidate]s on change.
-@export var visibility: DotNetVisibility = null:
+@export var visibility: GSNetVisibility = null:
 	set(value):
 		visibility = value
 		invalidate()
@@ -49,8 +49,8 @@ func _init() -> void:
 
 
 func _is_relevant(
-	observer: DotNetIdentity,
-	entity: DotNetIdentity,
+	observer: GSNetIdentity,
+	entity: GSNetIdentity,
 	_context: Dictionary
 ) -> bool:
 	if observer == null:
@@ -86,7 +86,7 @@ func _sees(here: Vector3, there: Vector3) -> bool:
 	return visibility.visible(here, there)
 
 
-func _radius_for(entity: DotNetIdentity) -> float:
+func _radius_for(entity: GSNetIdentity) -> float:
 	for tag in entity.interest_tags:
 		if radius_by_tag.has(tag):
 			return float(radius_by_tag[tag])
@@ -94,8 +94,8 @@ func _radius_for(entity: DotNetIdentity) -> float:
 
 
 func _score(
-	observer: DotNetIdentity,
-	entity: DotNetIdentity,
+	observer: GSNetIdentity,
+	entity: GSNetIdentity,
 	_context: Dictionary
 ) -> float:
 	if observer == null:
@@ -114,8 +114,8 @@ func _score(
 ## 100-player snapshot's interest time. A subclass, or any tag in play, takes the base loop.
 func _evaluate_into(
 	out: Array,
-	observer: DotNetIdentity,
-	all: Array[DotNetIdentity],
+	observer: GSNetIdentity,
+	all: Array[GSNetIdentity],
 	context: Dictionary
 ) -> void:
 	if observer == null or not use_squared or not always_tags.is_empty() or not _exact():
@@ -167,30 +167,30 @@ func _evaluate_into(
 
 ## Each identity's cluster, once per snapshot: a tree walk per entity rather than per pair. Not
 ## when the native core will answer (it walks its own); a GDScript question then walks per pair.
-func _prepare(all: Array[DotNetIdentity], context: Dictionary) -> void:
+func _prepare(all: Array[GSNetIdentity], context: Dictionary) -> void:
 	super._prepare(all, context)
 	_clusters = {}
-	var config := context.get("config") as DotNetConfig
+	var config := context.get("config") as GSNetConfig
 	if _visibility_on() and not (config != null and config.native and config.native_interest and native_interest_ok()):
 		for identity in all:
 			_clusters[identity] = visibility.cluster_of(identity.world_position())
 
 
-func index_snapshot(all: Array[DotNetIdentity]) -> void:
+func index_snapshot(all: Array[GSNetIdentity]) -> void:
 	super.index_snapshot(all)
 	if all.is_empty():
 		_clusters = {}
 
 
 ## The cluster of [param identity] at [param at]: [method _prepare]'s, or walked now outside a snapshot.
-func _cluster(identity: DotNetIdentity, at: Vector3) -> int:
+func _cluster(identity: GSNetIdentity, at: Vector3) -> int:
 	var known: Variant = _clusters.get(identity)
 	return int(known) if known != null else visibility.cluster_of(at)
 
 
 ## The loop above with [member visibility]: the observer's cluster looked up once, the bit test after
 ## the distance test, as the native core does it.
-func _evaluate_visible_into(out: Array, here: Vector3, owner: int, all: Array[DotNetIdentity]) -> void:
+func _evaluate_visible_into(out: Array, here: Vector3, owner: int, all: Array[GSNetIdentity]) -> void:
 	var vis := visibility
 	var from_cluster := vis.cluster_of(here)
 	var audible_squared := visibility_audible_radius * visibility_audible_radius
@@ -209,15 +209,15 @@ func _evaluate_visible_into(out: Array, here: Vector3, owner: int, all: Array[Do
 			out.append(identity)
 
 
-## [method DotNetInterest.scores_for] with [method _score] inlined, as above.
-func scores_for(observer: DotNetIdentity, entities: Array, context: Dictionary) -> Dictionary:
+## [method GSNetInterest.scores_for] with [method _score] inlined, as above.
+func scores_for(observer: GSNetIdentity, entities: Array, context: Dictionary) -> Dictionary:
 	if observer == null or not _exact():
 		return super.scores_for(observer, entities, context)
 	var out := {}
 	var here := observer.world_position()
 	var plain := maxf(1.0, radius)
 	var by_tag := radius_by_tag
-	for identity: DotNetIdentity in entities:
+	for identity: GSNetIdentity in entities:
 		var limit := plain
 		for tag in identity.interest_tags:
 			if by_tag.has(tag):
@@ -229,20 +229,20 @@ func scores_for(observer: DotNetIdentity, entities: Array, context: Dictionary) 
 
 
 ## Only this class itself with plain squared distances and no always-on tags: the cases the native core ports line for line. With
-## [member visibility] on, only a core that has it ([code]DotNetNativeCore.visibility_supported[/code]); an older binary leaves interest
+## [member visibility] on, only a core that has it ([code]GSNetNativeCore.visibility_supported[/code]); an older binary leaves interest
 ## to GDScript rather than ignoring the walls.
 func native_interest_ok() -> bool:
 	if not (_exact() and use_squared and always_tags.is_empty()):
 		return false
 	if _visibility_on():
 		if _native_visibility < 0:
-			_native_visibility = 1 if ClassDB.class_exists(&"DotNetNativeCore") \
-				and ClassDB.class_has_method(&"DotNetNativeCore", &"visibility_supported") else 0
+			_native_visibility = 1 if ClassDB.class_exists(&"GSNetNativeCore") \
+				and ClassDB.class_has_method(&"GSNetNativeCore", &"visibility_supported") else 0
 		return _native_visibility == 1
 	return true
 
 
-func native_config(config: DotNetConfig) -> Dictionary:
+func native_config(config: GSNetConfig) -> Dictionary:
 	return {
 		"on": true, "radius": radius, "radius_by_tag": radius_by_tag,
 		"interval": evaluation_interval_sec, "far_every": far_every, "far_distance": far_distance,
@@ -256,7 +256,7 @@ func native_config(config: DotNetConfig) -> Dictionary:
 
 
 func _exact() -> bool:
-	return (get_script() as Script).get_global_name() == &"DotNetInterestDistance"
+	return (get_script() as Script).get_global_name() == &"GSNetInterestDistance"
 
 
 func describe() -> Dictionary:
@@ -267,7 +267,7 @@ func describe() -> Dictionary:
 	return d
 
 
-## Thread-safe as itself, not as a subclass: see [method DotNetInterest.is_thread_safe].
+## Thread-safe as itself, not as a subclass: see [method GSNetInterest.is_thread_safe].
 ## Reads only frozen positions, the identities' fields and its own exports.
 func is_thread_safe() -> bool:
-	return (get_script() as Script).get_global_name() == &"DotNetInterestDistance"
+	return (get_script() as Script).get_global_name() == &"GSNetInterestDistance"

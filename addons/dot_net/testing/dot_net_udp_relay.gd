@@ -151,9 +151,9 @@ var _port: int = 0
 
 ## Listens on [param listen_port] (0 picks one; see [method port]) and forwards every
 ## client it hears to [param target_host]:[param target_port].
-func start(listen_port: int, target_host: String, target_port: int, bind_address: String = "127.0.0.1") -> DotResult:
+func start(listen_port: int, target_host: String, target_port: int, bind_address: String = "127.0.0.1") -> GSResult:
 	if _listener != null:
-		return DotResult.fail(DotError.CODE_STATE, "The relay is already running.")
+		return GSResult.fail(GSError.CODE_STATE, "The relay is already running.")
 
 	up._rng.seed = seed
 	down._rng.seed = seed + 1
@@ -166,8 +166,8 @@ func start(listen_port: int, target_host: String, target_port: int, bind_address
 
 	if err != OK:
 		_listener = null
-		return DotResult.failure(
-			DotError.from_engine(err, "relay listening on UDP %d" % listen_port)
+		return GSResult.failure(
+			GSError.from_engine(err, "relay listening on UDP %d" % listen_port)
 		)
 
 	_port = _listener.get_local_port()
@@ -179,11 +179,11 @@ func start(listen_port: int, target_host: String, target_port: int, bind_address
 		_thread = Thread.new()
 		_thread.start(_loop)
 
-	DotLog.info(CHANNEL, "relay listening", {
+	GSLog.info(CHANNEL, "relay listening", {
 		"port": _port, "target": "%s:%d" % [target_host, target_port],
 		"up": up.describe(), "down": down.describe(),
 	})
-	return DotResult.success(_port)
+	return GSResult.success(_port)
 
 
 ## The UDP port clients should connect to.
@@ -278,7 +278,7 @@ func poll() -> void:
 		var err := flow.upstream.connect_to_host(_target_host, _target_port)
 
 		if err != OK:
-			DotLog.warn(CHANNEL, "could not open the upstream socket", {"error": error_string(err)})
+			GSLog.warn(CHANNEL, "could not open the upstream socket", {"error": error_string(err)})
 			flow.client.close()
 			continue
 

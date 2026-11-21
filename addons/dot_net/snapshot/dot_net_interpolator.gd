@@ -1,4 +1,4 @@
-class_name DotNetInterpolator
+class_name GSNetInterpolator
 extends RefCounted
 
 ## Renders remote entities smoothly from snapshots that arrive unevenly.
@@ -17,18 +17,18 @@ class Track extends RefCounted:
 	var net_id: int
 	## Array of {tick, at_ms, values}
 	var samples: Array[Dictionary] = []
-	## What [method DotNetInterpolator.apply] writes: the behaviours it was built for, their
+	## What [method GSNetInterpolator.apply] writes: the behaviours it was built for, their
 	## declaration counts, and each one's interpolated properties in declaration order.
 	var plan_behaviours: Array = []
 	var plan_sizes := PackedInt32Array()
 	var plan_props: Array = []
-	## What [method DotNetInterpolator.apply] still adds to each position it draws: the
+	## What [method GSNetInterpolator.apply] still adds to each position it draws: the
 	## part of a jump out of an extrapolation not yet eased away. property -> Vector3/2.
 	var offsets: Dictionary = {}
 	## The two samples the last drawn frame extrapolated from, or empty when it was
-	## between two samples. See [method DotNetInterpolator._ease_resume].
+	## between two samples. See [method GSNetInterpolator._ease_resume].
 	var ahead_from: Array[Dictionary] = []
-	## The settled skip's reference ([member DotNetConfig.skip_settled_interp]): the draw written in
+	## The settled skip's reference ([member GSNetConfig.skip_settled_interp]): the draw written in
 	## [member drawn_frame], emptied by [method push] (its snapshot hooks may have written over it).
 	var drawn: Dictionary = {}
 	var drawn_frame: int = -1
@@ -74,7 +74,7 @@ class Track extends RefCounted:
 		return samples.is_empty()
 
 
-var config: DotNetConfig
+var config: GSNetConfig
 
 ## net_id -> Track
 var _tracks: Dictionary = {}
@@ -127,9 +127,9 @@ var _last_late_tick: int = -1
 var _late_fed: bool = false
 
 ## GameSpice Sim's native twin of the tracks and of [method apply]'s draw, or null: see
-## [member DotNetConfig.sim_interp]. The GDScript tracks are kept as well, for
+## [member GSNetConfig.sim_interp]. The GDScript tracks are kept as well, for
 ## [method value_at], [method bracket_at] and lag compensation.
-const NATIVE_CLASS := &"DotSimInterpolator"
+const NATIVE_CLASS := &"GSSimInterpolator"
 ## Off for a test or a bench that wants the GDScript path in a process with the library.
 static var native_enabled := true
 var _native: Object = null
@@ -137,12 +137,12 @@ var _native: Object = null
 ## only has the per-entity [code]apply[/code].
 var _native_all := false
 
-## [method apply_frame] calls, for [member DotNetConfig.skip_settled_interp]; and the entities it left alone.
+## [method apply_frame] calls, for [member GSNetConfig.skip_settled_interp]; and the entities it left alone.
 var _frame: int = 0
 var _settled: int = 0
 
 
-func _init(p_config: DotNetConfig) -> void:
+func _init(p_config: GSNetConfig) -> void:
 	config = p_config
 	_delay_snapshots = config.interpolation_buffer
 	_target_snapshots = _delay_snapshots
@@ -198,7 +198,7 @@ func note_arrival() -> void:
 		_adapt()
 
 
-## Notes how late the snapshot for [param tick] arrived: [param received_tick] is the clock's receive timeline once it has seen it ([method DotNetClock.received_tick]), so this is the time the packet spent over the quickest, in ticks.
+## Notes how late the snapshot for [param tick] arrived: [param received_tick] is the clock's receive timeline once it has seen it ([method GSNetClock.received_tick]), so this is the time the packet spent over the quickest, in ticks.
 ##
 ## The buffer must cover the interval, plus how late packets are, plus one more interval when one goes missing; sizing from arrival gaps alone fell about a third short.
 func note_lateness(tick: int, received_tick: int) -> void:
@@ -229,7 +229,7 @@ func _late_ticks() -> float:
 
 ## Moves the drawn buffer toward its target by at most [constant GROW_RATE] of the time
 ## that passed. Called once a frame, before sampling, by
-## [method DotNetManager.interpolate_frame].
+## [method GSNetManager.interpolate_frame].
 func advance(elapsed_sec: float) -> void:
 	_frame_driven = true
 	_frame_elapsed = maxf(0.0, elapsed_sec)
@@ -277,7 +277,7 @@ func _adapt() -> void:
 	# and a line per 1% lerp says nothing. A whole snapshot is what the player pays in latency.
 	# DEBUG: a state transition, and the answer to "everything remote feels delayed".
 	if floori(_delay_snapshots) != floori(before):
-		DotLog.debug(CHANNEL, "the interpolation buffer moved", {
+		GSLog.debug(CHANNEL, "the interpolation buffer moved", {
 			"from": "%.2f snapshots" % before,
 			"to": "%.2f snapshots (%.1f ticks)" % [_delay_snapshots, delay_ticks()],
 			"jitter": "%.1f ms" % _arrival_jitter_ms,
@@ -287,7 +287,7 @@ func _adapt() -> void:
 
 ## Interpolated values for an entity at the current render time.
 ##
-## Empty when there is nothing to show yet (one sample cannot be interpolated). [param server_tick] is a float on purpose: a renderer runs between ticks (see [method DotNetManager.interpolate_frame]).
+## Empty when there is nothing to show yet (one sample cannot be interpolated). [param server_tick] is a float on purpose: a renderer runs between ticks (see [method GSNetManager.interpolate_frame]).
 func sample(net_id: int, server_tick: float) -> Dictionary:
 	var track: Track = _tracks.get(net_id)
 	if track == null or track.samples.is_empty():
@@ -429,7 +429,7 @@ static func _jumps_after(samples: Array, from: int, property: StringName, cut: f
 
 ## Continues past the newest sample, briefly.
 ##
-## Bounded by [member DotNetConfig.max_extrapolation_sec]; past that the entity holds position, since a wrong guess that keeps moving snaps back hard when the stream resumes.
+## Bounded by [member GSNetConfig.max_extrapolation_sec]; past that the entity holds position, since a wrong guess that keeps moving snaps back hard when the stream resumes.
 func _extrapolate(track: Track, render_tick: float) -> Dictionary:
 	var newest: Dictionary = track.samples[track.samples.size() - 1]
 	var values: Dictionary = newest["values"]
@@ -546,13 +546,13 @@ static func _blend_value(from_value: Variant, to_value: Variant, alpha: float) -
 
 ## Applies interpolated values to an entity's behaviours.
 ##
-## Only properties declared [member DotNetVar.interpolate] are written here; the rest were applied when the snapshot arrived.
-func apply(identity: DotNetIdentity, server_tick: float) -> void:
+## Only properties declared [member GSNetVar.interpolate] are written here; the rest were applied when the snapshot arrived.
+func apply(identity: GSNetIdentity, server_tick: float) -> void:
 	_apply(identity, server_tick, -1)
 
 
-## [method apply]; with [param frame] at or above 0, the settled skip of [member DotNetConfig.skip_settled_interp].
-func _apply(identity: DotNetIdentity, server_tick: float, frame: int) -> void:
+## [method apply]; with [param frame] at or above 0, the settled skip of [member GSNetConfig.skip_settled_interp].
+func _apply(identity: GSNetIdentity, server_tick: float, frame: int) -> void:
 	if identity == null or identity.is_predicted():
 		# A predicted entity is driven by prediction, not by interpolation. Writing
 		# interpolated state over it would fight the predictor every frame.
@@ -599,8 +599,8 @@ func _apply(identity: DotNetIdentity, server_tick: float, frame: int) -> void:
 
 ## [method apply] for every entity in [param identities], one frame, drawing the same as calling it per entity. What [method apply] works out per call
 ## (the render tick, the extrapolation cap, the ease settings) is the same for the whole frame, so the native path works it out once and hands the library
-## the whole frame; the GDScript path calls [method apply] per entity. [method DotNetManager.interpolate_frame] calls this.
-func apply_frame(identities: Array[DotNetIdentity], server_tick: float) -> void:
+## the whole frame; the GDScript path calls [method apply] per entity. [method GSNetManager.interpolate_frame] calls this.
+func apply_frame(identities: Array[GSNetIdentity], server_tick: float) -> void:
 	var frame := -1
 	if config.skip_settled_interp:
 		_frame += 1
@@ -630,7 +630,7 @@ func apply_frame(identities: Array[DotNetIdentity], server_tick: float) -> void:
 
 ## Whether [param track]'s write plan still matches [param behaviours]: a game with forty
 ## replicated properties and four interpolated would otherwise walk all forty per frame.
-static func _plan_fits(track: Track, behaviours: Array[DotNetBehaviour]) -> bool:
+static func _plan_fits(track: Track, behaviours: Array[GSNetBehaviour]) -> bool:
 	if track.plan_behaviours.size() != behaviours.size():
 		return false
 	for b in range(behaviours.size()):
@@ -639,7 +639,7 @@ static func _plan_fits(track: Track, behaviours: Array[DotNetBehaviour]) -> bool
 	return true
 
 
-static func _build_plan(track: Track, behaviours: Array[DotNetBehaviour]) -> void:
+static func _build_plan(track: Track, behaviours: Array[GSNetBehaviour]) -> void:
 	track.plan_behaviours = behaviours.duplicate()
 	track.plan_sizes.resize(behaviours.size())
 	track.plan_props = []
@@ -724,13 +724,13 @@ func prune(live_ids: PackedInt64Array) -> void:
 		_native.prune(live_ids)
 
 
-## The buffer in snapshots: what [member DotNetConfig.interpolation_buffer] sets and what
+## The buffer in snapshots: what [member GSNetConfig.interpolation_buffer] sets and what
 ## [method _adapt] adjusts.
 func delay_snapshots() -> float:
 	return _delay_snapshots
 
 
-## The buffer in TICKS: how far behind its [code]server_tick[/code] [method sample] renders, and the number [method DotNetHistory.client_view_tick] wants as its [code]interpolation_delay_ticks[/code].
+## The buffer in TICKS: how far behind its [code]server_tick[/code] [method sample] renders, and the number [method GSNetHistory.client_view_tick] wants as its [code]interpolation_delay_ticks[/code].
 func delay_ticks() -> float:
 	return _delay_snapshots * _snapshot_ticks()
 
@@ -741,7 +741,7 @@ func delay_ms() -> float:
 
 ## Ticks between two snapshots, as the server actually sends them.
 ##
-## [method DotNetConfig.ticks_per_snapshot] (an integer division), not tick_rate / snapshot_rate.
+## [method GSNetConfig.ticks_per_snapshot] (an integer division), not tick_rate / snapshot_rate.
 func _snapshot_ticks() -> float:
 	return float(config.ticks_per_snapshot())
 
@@ -761,7 +761,7 @@ func extrapolation_count() -> int:
 	return _extrapolations + (_native.extrapolation_count() as int if _native != null else 0)
 
 
-## Entities [method apply_frame] left alone as settled ([member DotNetConfig.skip_settled_interp]).
+## Entities [method apply_frame] left alone as settled ([member GSNetConfig.skip_settled_interp]).
 func settled_count() -> int:
 	return _settled + (_native.settled_count() as int if _native != null and _native.has_method(&"settled_count") else 0)
 

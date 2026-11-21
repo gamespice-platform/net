@@ -1,9 +1,9 @@
 @tool
-class_name DotNetInterestGrid
-extends DotNetInterest
+class_name GSNetInterestGrid
+extends GSNetInterest
 
 ## Spatial-hash interest, for worlds with too many entities to scan per observer.
-## [DotNetInterestDistance] is O(observers × entities).
+## [GSNetInterestDistance] is O(observers × entities).
 
 ## Cell edge length in metres.
 @export var cell_size: float = 128.0
@@ -18,11 +18,11 @@ extends DotNetInterest
 ## tall, and a third axis multiplies the cell count for a dimension that rarely separates anything.
 @export var ignore_vertical: bool = true
 
-## cell key -> Array[DotNetIdentity]
+## cell key -> Array[GSNetIdentity]
 var _cells: Dictionary = {}
 var _indexed_count: int = 0
 
-## Uses the native cell index (dot-sim's DotSimInterestGrid, same candidates in the same order) when true. Off by default: it is main-thread only, so the grid stops being thread-safe while it runs, and it measured 1.2-1.3x on prepare plus queries.
+## Uses the native cell index (dot-sim's GSSimInterestGrid, same candidates in the same order) when true. Off by default: it is main-thread only, so the grid stops being thread-safe while it runs, and it measured 1.2-1.3x on prepare plus queries.
 ## It is only used when the extension carries it; a web export never does and runs the script index.
 @export var native: bool = false
 
@@ -35,14 +35,14 @@ func _init() -> void:
 
 
 ## Rebuilds the index.
-func _prepare(all: Array[DotNetIdentity], _context: Dictionary) -> void:
+func _prepare(all: Array[GSNetIdentity], _context: Dictionary) -> void:
 	_cells.clear()
 	_indexed_count = 0
 	_slots.clear()
 
 	if _native_wanted():
 		if _index == null:
-			_index = ClassDB.instantiate(&"DotSimInterestGrid") as RefCounted
+			_index = ClassDB.instantiate(&"GSSimInterestGrid") as RefCounted
 		var positions := PackedVector3Array()
 		for identity in all:
 			if identity.always_relevant:
@@ -71,8 +71,8 @@ func _prepare(all: Array[DotNetIdentity], _context: Dictionary) -> void:
 
 ## Returns only entities in the cells the observer's radius touches.
 func _candidates(
-	observer: DotNetIdentity,
-	all: Array[DotNetIdentity],
+	observer: GSNetIdentity,
+	all: Array[GSNetIdentity],
 	_context: Dictionary
 ) -> Variant:
 	if observer == null:
@@ -93,7 +93,7 @@ func _candidates(
 
 	var reach := int(ceilf(radius / maxf(1.0, cell_size)))
 
-	# Untyped: a worker may build it (DotNetInterest.relevance says why).
+	# Untyped: a worker may build it (GSNetInterest.relevance says why).
 	var out: Array = []
 
 	var cx := int(floorf(centre.x / cell_size))
@@ -119,8 +119,8 @@ func _candidates(
 
 
 func _is_relevant(
-	observer: DotNetIdentity,
-	entity: DotNetIdentity,
+	observer: GSNetIdentity,
+	entity: GSNetIdentity,
 	_context: Dictionary
 ) -> bool:
 	if observer == null:
@@ -138,8 +138,8 @@ func _is_relevant(
 
 
 func _score(
-	observer: DotNetIdentity,
-	entity: DotNetIdentity,
+	observer: GSNetIdentity,
+	entity: GSNetIdentity,
 	_context: Dictionary
 ) -> float:
 	if observer == null:
@@ -164,7 +164,7 @@ static func _key(x: int, y: int, z: int) -> int:
 
 
 func _native_wanted() -> bool:
-	return native and ClassDB.class_exists(&"DotSimInterestGrid")
+	return native and ClassDB.class_exists(&"GSSimInterestGrid")
 
 
 func describe() -> Dictionary:
@@ -177,8 +177,8 @@ func describe() -> Dictionary:
 	return d
 
 
-## Thread-safe as itself, not as a subclass: see [method DotNetInterest.is_thread_safe].
+## Thread-safe as itself, not as a subclass: see [method GSNetInterest.is_thread_safe].
 ## Not while the native index is in use: an extension object is only touched from the main thread.
 ## Reads only frozen positions, the identities' fields and its own exports, and [member _cells], built on the main thread by [method _prepare].
 func is_thread_safe() -> bool:
-	return _index == null and (get_script() as Script).get_global_name() == &"DotNetInterestGrid"
+	return _index == null and (get_script() as Script).get_global_name() == &"GSNetInterestGrid"

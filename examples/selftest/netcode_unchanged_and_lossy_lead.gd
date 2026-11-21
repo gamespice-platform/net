@@ -5,9 +5,9 @@ extends "netcode_latency_and_interpolation.gd"
 
 ## Three managers over a lossless pipe and the entities they share, for [method _test_unchanged_entities].
 class QuietRig extends RefCounted:
-	var host: DotNetManager
-	var fresh: DotNetManager
-	var legacy: DotNetManager
+	var host: GSNetManager
+	var fresh: GSNetManager
+	var legacy: GSNetManager
 	var exclude: ExcludeInterest
 	var sent := {2: [], 3: []}
 	var on_server: Array = []
@@ -56,16 +56,16 @@ func _unchanged_rig(entities: int) -> QuietRig:
 	host.interest = rig.exclude
 	var sent := rig.sent
 	host.send_fn = func(peer_id: int, payload: PackedByteArray, d: int) -> void:
-		var to: DotNetManager = fresh if peer_id == 2 else legacy
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		var to: GSNetManager = fresh if peer_id == 2 else legacy
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			var _schema := to.receive(payload, 1)
 			return
 		(sent[peer_id] as Array).append(payload)
 	fresh.send_fn = func(_peer: int, payload: PackedByteArray, d: int) -> void:
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			var _adopted := host.receive(payload, 2)
 	legacy.send_fn = func(_peer: int, payload: PackedByteArray, d: int) -> void:
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			var _adopted := host.receive(payload, 3)
 	host.start()
 	fresh.start()
@@ -73,13 +73,13 @@ func _unchanged_rig(entities: int) -> QuietRig:
 	host.add_peer(2)
 	host.add_peer(3)
 	for m in [host, fresh, legacy]:
-		(m as DotNetManager).spawner.register_factory(&"counted", _build_counted)
+		(m as GSNetManager).spawner.register_factory(&"counted", _build_counted)
 	_check("the new client says it reads unchanged lists, the old one does not",
-		host.messages.peer_supports(2, DotNetMessageRegistry.FEATURE_UNCHANGED_RUNS)
-			and not host.messages.peer_supports(3, DotNetMessageRegistry.FEATURE_UNCHANGED_RUNS))
+		host.messages.peer_supports(2, GSNetMessageRegistry.FEATURE_UNCHANGED_RUNS)
+			and not host.messages.peer_supports(3, GSNetMessageRegistry.FEATURE_UNCHANGED_RUNS))
 	for i in entities:
 		# Owned by nobody here, so both clients interpolate them.
-		var spawned: DotNetIdentity = host.spawner.spawn(&"counted", 9, Transform3D.IDENTITY, 0).value
+		var spawned: GSNetIdentity = host.spawner.spawn(&"counted", 9, Transform3D.IDENTITY, 0).value
 		# Out of view means out at once, not after the boundary's grace period.
 		spawned.interest_linger_sec = 0.0
 		var _f := fresh.spawner.spawn_remote(&"counted", spawned.net_id, 9, Transform3D.IDENTITY, 0)
@@ -91,7 +91,7 @@ func _unchanged_rig(entities: int) -> QuietRig:
 
 
 ## [b]An entity with nothing to say is listed, not written.[/b] A client announcing
-## [constant DotNetMessageRegistry.FEATURE_UNCHANGED_RUNS] gets runs of ids in the part's tail,
+## [constant GSNetMessageRegistry.FEATURE_UNCHANGED_RUNS] gets runs of ids in the part's tail,
 ## applied exactly as an empty body. Armed with each fix reverted in turn (send, receive, early return).
 func _test_unchanged_entities() -> void:
 	print("")
@@ -105,7 +105,7 @@ func _test_unchanged_entities() -> void:
 	rig.legacy.stop()
 	for m in [rig.host, rig.fresh, rig.legacy]:
 		remove_child(m)
-		(m as DotNetManager).free()
+		(m as GSNetManager).free()
 
 
 func _unchanged_savings(rig: QuietRig) -> void:
@@ -195,7 +195,7 @@ func _unchanged_relevance(rig: QuietRig) -> void:
 	host.config.mtu = 1200
 
 	# An old client handed a tail by mistake refuses it as a bad part trailer, not a misread.
-	var mark := DotNetManager.UNCHANGED_TAIL_MARK
+	var mark := GSNetManager.UNCHANGED_TAIL_MARK
 	_check("the tail's mark reads to an old client as an impossible trailer",
 		(mark & 0xF) >= (mark >> 4) + 1)
 
@@ -208,32 +208,32 @@ func _unchanged_codec(rig: QuietRig) -> void:
 	var sets := [[1, 2, 3, 4, 5], [7, 100, 4000, 16000000], [3, 4, 9, 10, 11, 12, 40], [1]]
 	for ids_set: Array in sets:
 		var ids := PackedInt32Array(ids_set)
-		var runs := DotNetManager._unchanged_runs(ids)
-		var w := DotNetWriter.new()
-		DotNetManager._write_unchanged_tail(w, runs)
+		var runs := GSNetManager._unchanged_runs(ids)
+		var w := GSNetWriter.new()
+		GSNetManager._write_unchanged_tail(w, runs)
 		var r := w.to_reader()
 		var got: Array = []
 		var _m := r.read_uint(8)
-		var count := DotNetManager._read_gamma(r)
+		var count := GSNetManager._read_gamma(r)
 		var cursor := 0
 		for _k in count:
-			var first := cursor + DotNetManager._read_gamma(r)
-			var length := DotNetManager._read_gamma(r) + 1
+			var first := cursor + GSNetManager._read_gamma(r)
+			var length := GSNetManager._read_gamma(r) + 1
 			for id in range(first, first + length):
 				got.append(id)
 			cursor = first + length
-		if got != ids_set or w.bit_length() + DotNetManager.SNAPSHOT_PART_TRAILER_BITS \
-				!= DotNetManager._unchanged_tail_bits(runs):
+		if got != ids_set or w.bit_length() + GSNetManager.SNAPSHOT_PART_TRAILER_BITS \
+				!= GSNetManager._unchanged_tail_bits(runs):
 			codec_ok = false
 	_check("unchanged runs round-trip, and their size is known before writing", codec_ok)
 
 	# A truncated list changes nothing and is a decode failure.
-	var bad := DotNetWriter.new()
+	var bad := GSNetWriter.new()
 	bad.write_uint(20, 32)
 	bad.write_uint(0, 12)
-	bad.write_uint(DotNetManager.UNCHANGED_TAIL_MARK, 8)
-	DotNetManager._write_gamma(bad, 1)
-	DotNetManager._write_gamma(bad, on_fresh[0].identity.net_id)
+	bad.write_uint(GSNetManager.UNCHANGED_TAIL_MARK, 8)
+	GSNetManager._write_gamma(bad, 1)
+	GSNetManager._write_gamma(bad, on_fresh[0].identity.net_id)
 	bad.write_bits(0, 12)
 	var before: Variant = on_fresh[0].applied
 	var refused := fresh.receive_snapshot(bad.to_bytes())
@@ -241,7 +241,7 @@ func _unchanged_codec(rig: QuietRig) -> void:
 		not refused.ok and on_fresh[0].applied == before)
 
 
-## [method DotNetVar.server_driven]: a property only the server writes never counts as a misprediction,
+## [method GSNetVar.server_driven]: a property only the server writes never counts as a misprediction,
 ## and a skipped replay still leaves the server's value in it. Both guests skip matching replays; the
 ## server bumps [code]health[/code] every 8 ticks, and only guest 1 declares it server-driven.
 func _test_server_driven_vars() -> void:
@@ -260,12 +260,12 @@ func _test_server_driven_vars() -> void:
 	var _a := host.setup()
 	var wire: Array[PackedByteArray] = []
 	host.send_fn = func(_peer: int, payload: PackedByteArray, d: int) -> void:
-		if d == DotNetMessage.Delivery.UNRELIABLE:
+		if d == GSNetMessage.Delivery.UNRELIABLE:
 			wire.append(payload)
 	var _c := host.start()
 	host.add_peer(2)
 	host.spawner.register_factory(&"player", _build_player)
-	var on_server: DotNetIdentity = host.spawner.spawn(&"player", 2, Transform3D.IDENTITY, 0).value
+	var on_server: GSNetIdentity = host.spawner.spawn(&"player", 2, Transform3D.IDENTITY, 0).value
 	var served := on_server.behaviours[0] as Movement
 	var moving := _skip_mirrors(guests, on_server, false)
 	for declaration in moving[1].net_vars:
@@ -314,7 +314,7 @@ func _test_server_driven_vars() -> void:
 	_free_managers([host] + guests)
 
 
-## [member DotNetConfig.skip_idle_snapshots]: a server with nobody to send to prepares no snapshot, still
+## [member GSNetConfig.skip_idle_snapshots]: a server with nobody to send to prepares no snapshot, still
 ## reports one a snapshot tick, and a peer that joins afterwards is sent the world as before.
 func _test_idle_snapshots() -> void:
 	_sections_entered += 1
@@ -324,14 +324,14 @@ func _test_idle_snapshots() -> void:
 	var reported := {}
 	var joined_sends := {}
 	for skip in [false, true]:
-		var host := DotNetManager.new()
+		var host := GSNetManager.new()
 		host.name = "IdleHost%s" % ("Skip" if skip else "Build")
 		host.is_server = true
 		host.service_scope = &"idle_snapshots"
 		host.local_peer_id = 1
 		host.auto_tick = false
 		host.config_file = ""
-		host.config = DotNetConfig.new()
+		host.config = GSNetConfig.new()
 		host.config.tick_rate = 60
 		host.config.snapshot_rate = 60
 		host.config.skip_idle_snapshots = skip
@@ -339,7 +339,7 @@ func _test_idle_snapshots() -> void:
 		var _ready_now := host.setup()
 		var sends := [0]
 		host.send_fn = func(_peer_id: int, _payload: PackedByteArray, d: int) -> void:
-			if d == DotNetMessage.Delivery.UNRELIABLE:
+			if d == GSNetMessage.Delivery.UNRELIABLE:
 				sends[0] += 1
 		var told := [0]
 		host.snapshot_sent.connect(func(_tick: int, _peers: int) -> void: told[0] += 1)
@@ -364,21 +364,21 @@ func _test_idle_snapshots() -> void:
 	_sections_completed += 1
 
 
-## [method DotNetManager.snapshot_due], read before each tick, says whether that tick sends: at
+## [method GSNetManager.snapshot_due], read before each tick, says whether that tick sends: at
 ## 60 Hz with 20 snapshots a second, every third tick; staggered, every tick.
 func _test_snapshot_due() -> void:
 	_sections_entered += 1
 	print("")
 	print("[snapshot due]")
 	for stagger in [false, true]:
-		var host := DotNetManager.new()
+		var host := GSNetManager.new()
 		host.name = "DueHost%s" % ("Stagger" if stagger else "")
 		host.is_server = true
 		host.service_scope = &"snapshot_due"
 		host.local_peer_id = 1
 		host.auto_tick = false
 		host.config_file = ""
-		host.config = DotNetConfig.new()
+		host.config = GSNetConfig.new()
 		host.config.tick_rate = 60
 		host.config.snapshot_rate = 20
 		host.config.stagger_snapshots = stagger
@@ -411,14 +411,14 @@ func _test_snapshot_due() -> void:
 func _lossy_lead_run(rate: int, loss: float, batched: bool, seconds: float, seed_value: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
-	var clock := DotNetClock.new(rate)
+	var clock := GSNetClock.new(rate)
 	clock.follow_engine_time = false
-	var buffer := DotNetInput.Buffer.new(120)
+	var buffer := GSNetInput.Buffer.new(120)
 	var frame_ms := 1000.0 / float(rate)
 	var one_way := 55.0
 	var up: Array = []
 	var down: Array = []
-	var sent: Array[DotNetInput] = []
+	var sent: Array[GSNetInput] = []
 	var out := {"holes": 0, "starved": 0, "lead_min": 1 << 30, "lead_max": -(1 << 30), "late_reports": 0}
 	var last_stamped := -1
 	var settle := int(2.0 * float(rate))
@@ -434,7 +434,7 @@ func _lossy_lead_run(rate: int, loss: float, batched: bool, seconds: float, seed
 				var _b := buffer.push_batch(packet)
 			else:
 				for i in packet.size():
-					var command := packet[i] as DotNetInput
+					var command := packet[i] as GSNetInput
 					if i != packet.size() - 1 and command.tick <= buffer.last_consumed_tick():
 						continue
 					var _p := buffer.push(command)
@@ -448,7 +448,7 @@ func _lossy_lead_run(rate: int, loss: float, batched: bool, seconds: float, seed
 			var snapshot: Array = down.pop_front()
 			clock.sync_from_server(int(snapshot[1]), 2.0 * one_way)
 			var report: Vector2i = snapshot[2]
-			if report.x != DotNetInput.Buffer.LEAD_NONE:
+			if report.x != GSNetInput.Buffer.LEAD_NONE:
 				clock.note_input_lead(report.y, report.x)
 		var ticks := clock.advance(1.0 / float(rate))
 		for i in ticks:
@@ -477,14 +477,14 @@ func _test_lossy_lead() -> void:
 	print("[the input lead under packet loss]")
 
 	# The measurement itself: three packets' worth arriving in the third, two ticks before use.
-	var measured := DotNetInput.Buffer.new(16)
-	var each := DotNetInput.Buffer.new(16)
+	var measured := GSNetInput.Buffer.new(16)
+	var each := GSNetInput.Buffer.new(16)
 	var packet: Array = []
 	for tick in [10, 11, 12]:
 		var command := DemoInput.new()
 		command.tick = tick
 		packet.append(command)
-	for buffer: DotNetInput.Buffer in [measured, each]:
+	for buffer: GSNetInput.Buffer in [measured, each]:
 		var first := DemoInput.new()
 		first.tick = 8
 		var _f := buffer.push(first)
@@ -492,7 +492,7 @@ func _test_lossy_lead() -> void:
 		var _t9 := buffer.take(9)
 		var _s := buffer.take_lead_sample()
 	var batch_result := measured.push_batch(packet)
-	for command: DotNetInput in packet:
+	for command: GSNetInput in packet:
 		var _e := each.push(command)
 	var batch_sample := measured.take_lead_sample()
 	var each_sample := each.take_lead_sample()
@@ -549,7 +549,7 @@ func _test_lossy_lead() -> void:
 ## the snapshot for 13 arrives after 13's command was acknowledged away. Armed: without the
 ## buffer keeping that command the last two replayed nothing and the player stood 0.75 m short.
 func _check_replay_from_inside_a_hole() -> void:
-	var config := DotNetConfig.new()
+	var config := GSNetConfig.new()
 	var dt := 1.0 / 60.0
 	var inputs := _alternating_inputs(dt)
 	var server := _in_tree(_make_entity(&"player", 2))
@@ -566,14 +566,14 @@ func _check_replay_from_inside_a_hole() -> void:
 	client.is_owner = true
 	client.is_authoritative = false
 	var client_movement := client.behaviours[0] as Movement
-	var history := DotNetInput.Buffer.new(config.input_history_ticks)
+	var history := GSNetInput.Buffer.new(config.input_history_ticks)
 	for input in inputs:
 		if input.tick < 14 or input.tick > 16:
 			var _p := history.push(input)
-	var predictor := DotNetPredictor.new(config)
+	var predictor := GSNetPredictor.new(config)
 	var replays: Array[int] = []
 	var worst := 0.0
-	# As DotNetManager does for every snapshot: reconcile, then acknowledge its tick.
+	# As GSNetManager does for every snapshot: reconcile, then acknowledge its tick.
 	for tick: int in [12, 13, 14, 15]:
 		var result := predictor.reconcile(client, tick, at[tick], history, 20, dt)
 		replays.append(int(result.value) if result.ok else -1)
@@ -582,7 +582,7 @@ func _check_replay_from_inside_a_hole() -> void:
 	_check("a replay that starts inside a hole runs on the acknowledged command before it (%s ticks replayed, %.4f m off at worst)"
 			% [replays, worst],
 		replays == ([8, 7, 6, 5] as Array[int]) and worst < 0.001)
-	var before := DotNetInput.Buffer.new(config.input_history_ticks)
+	var before := GSNetInput.Buffer.new(config.input_history_ticks)
 	_check("a buffer nothing was acknowledged in has no command before its first",
 		before.latest_before(5) == null and history.latest_before(13) == null
 			and history.latest_before(16) != null and history.latest_before(16).tick == 15 - 2)
@@ -601,7 +601,7 @@ class CountedMovement extends Movement:
 		super(tick, delta)
 
 
-## [b]A reconcile replays only ticks already predicted.[/b] A client that advances its clock and records the tick's input before [method DotNetManager.predict_tick] has a snapshot waiting at that point; the replay must stop at the last tick predicted, or it plays the new one and predict_tick plays it again.
+## [b]A reconcile replays only ticks already predicted.[/b] A client that advances its clock and records the tick's input before [method GSNetManager.predict_tick] has a snapshot waiting at that point; the replay must stop at the last tick predicted, or it plays the new one and predict_tick plays it again.
 func _test_replay_bound() -> void:
 	print("")
 	print("[replay stops at the last predicted tick]")
@@ -616,21 +616,21 @@ func _test_replay_bound() -> void:
 
 ## Predicts 60 ticks, some frames two at a time, with a snapshot of a tick predicted three before read every third frame. [param order] is where the clock moves relative to the reconcile.
 func _bound_run(order: StringName) -> Dictionary:
-	var c := DotNetManager.new()
+	var c := GSNetManager.new()
 	c.is_server = false
 	c.local_peer_id = 5
 	c.auto_tick = false
 	c.config_file = ""
 	c.service_scope = StringName("bound_%s" % order)
-	c.config = DotNetConfig.new()
+	c.config = GSNetConfig.new()
 	c.config.reconcile_once_per_frame = order != &"on receipt"
 	add_child(c)
 	var _up := c.setup()
 	c.clock.sync_from_server(0, 0.0)
 	var body := Node3D.new()
-	var identity := DotNetIdentity.new()
+	var identity := GSNetIdentity.new()
 	identity.owner_peer_id = 5
-	identity.authority = DotNetIdentity.Authority.SHARED
+	identity.authority = GSNetIdentity.Authority.SHARED
 	body.add_child(identity)
 	var mover := CountedMovement.new()
 	body.add_child(mover)
@@ -681,22 +681,22 @@ func _bound_run(order: StringName) -> Dictionary:
 
 ## [b]Mismatches are counted once per divergent server tick.[/b] The server is a second [Movement] fed the same inputs, snapshotted three ticks behind the client with [param skip] on or off; it is bumped on [param bumps] so the only differences are the ones the test put there.
 func _mismatch_run(skip: bool, bumps: Array) -> Dictionary:
-	var c := DotNetManager.new()
+	var c := GSNetManager.new()
 	c.is_server = false
 	c.local_peer_id = 5
 	c.auto_tick = false
 	c.config_file = ""
 	c.service_scope = StringName("mm_%s" % skip)
-	c.config = DotNetConfig.new()
+	c.config = GSNetConfig.new()
 	c.config.skip_matching_replays = skip
 	c.config.reconcile_once_per_frame = true
 	add_child(c)
 	var _up := c.setup()
 	c.clock.sync_from_server(0, 0.0)
 	var body := Node3D.new()
-	var identity := DotNetIdentity.new()
+	var identity := GSNetIdentity.new()
 	identity.owner_peer_id = 5
-	identity.authority = DotNetIdentity.Authority.SHARED
+	identity.authority = GSNetIdentity.Authority.SHARED
 	body.add_child(identity)
 	var mover := Movement.new()
 	body.add_child(mover)

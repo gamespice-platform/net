@@ -1,5 +1,5 @@
 @tool
-class_name DotNetVisibility
+class_name GSNetVisibility
 extends Resource
 
 ## A map's PVS for snapshot interest: could anything in A's cluster see anything in B's (a BSP walk, ~20 plane tests, then one bit of a PVS row).
@@ -82,7 +82,7 @@ func cluster_sees(from: int, to: int) -> bool:
 	return rows[from * row_bytes + (to >> 3)] & (1 << (to & 7)) != 0
 
 
-## What the native core reads ([code]DotNetNativeCore.set_interest[/code]'s [code]vis[/code]). Packed
+## What the native core reads ([code]GSNetNativeCore.set_interest[/code]'s [code]vis[/code]). Packed
 ## arrays are shared, not copied; the core copies them only when [member serial] changes.
 func native_dict() -> Dictionary:
 	return {
@@ -110,8 +110,8 @@ func describe() -> Dictionary:
 ## visible. For tests and games that lay out their own rooms.
 static func from_cells(
 	grid_origin: Vector3, size: float, grid_dims: Vector3i, cell_cluster: PackedInt32Array, sees: Array
-) -> DotNetVisibility:
-	var out := DotNetVisibility.new()
+) -> GSNetVisibility:
+	var out := GSNetVisibility.new()
 	var count := sees.size()
 	out.clusters = count
 	out.row_bytes = (count + 7) >> 3
@@ -161,15 +161,15 @@ func _split(grid_origin: Vector3, size: float, grid_dims: Vector3i, lo: Vector3i
 	return index
 
 
-## From a BSP's visibility, the arrays of [code]DotMapBspMesh[/code]'s [code]vis[/code] record (metres, Godot axes): [param map_planes] nx ny nz d,
+## From a BSP's visibility, the arrays of [code]GSMapBspMesh[/code]'s [code]vis[/code] record (metres, Godot axes): [param map_planes] nx ny nz d,
 ## [param map_nodes] plane front back, [param map_leaf_cluster] per leaf, [param pvs] Quake-compressed rows at [param pvs_offsets] (-1 sees all),
 ## [param map_head] the root. Milliseconds: rows decoded once, nothing baked per position.
 static func bake_bsp(
 	map_planes: PackedFloat32Array, map_nodes: PackedInt32Array, map_leaf_cluster: PackedInt32Array,
 	cluster_count: int, pvs_offsets: PackedInt32Array, pvs: PackedByteArray, map_head: int,
 	map_bounds: AABB = AABB()
-) -> DotNetVisibility:
-	var out := DotNetVisibility.new()
+) -> GSNetVisibility:
+	var out := GSNetVisibility.new()
 	out.planes = map_planes
 	out.nodes = map_nodes
 	out.leaf_cluster = map_leaf_cluster
@@ -187,9 +187,9 @@ static func bake_bsp(
 	return out
 
 
-## [method bake_bsp] from a [code]DotMapBspMesh[/code] (duck-typed: GameSpice Net does not depend on
+## [method bake_bsp] from a [code]GSMapBspMesh[/code] (duck-typed: GameSpice Net does not depend on
 ## GameSpice Map) whose manifest has a [code]vis[/code] record. Null when it has none.
-static func from_dot_map_mesh(mesh: Object, map_bounds: AABB = AABB()) -> DotNetVisibility:
+static func from_dot_map_mesh(mesh: Object, map_bounds: AABB = AABB()) -> GSNetVisibility:
 	var info: Dictionary = (mesh.get("manifest") as Dictionary).get("vis", {})
 	if int(info.get("clusters", 0)) <= 0:
 		return null

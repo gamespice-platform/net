@@ -1,6 +1,6 @@
 #pragma once
 
-// The bit writer and the DotNetVar encoders, ported from dot_net_writer.gd and dot_net_var.gd bit
+// The bit writer and the GSNetVar encoders, ported from dot_net_writer.gd and dot_net_var.gd bit
 // for bit. Any change here is a protocol change; netcode_demo's [native] section compares both.
 
 #include <godot_cpp/variant/quaternion.hpp>
@@ -16,7 +16,7 @@ namespace dotnet {
 constexpr int64_t MAX_BYTES = 1 << 22;
 constexpr double PI_D = 3.14159265358979323846;
 
-// DotNetVar.Type, in declaration order.
+// GSNetVar.Type, in declaration order.
 enum VarType {
 	T_BOOL,
 	T_UINT,

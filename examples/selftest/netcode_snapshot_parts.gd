@@ -3,7 +3,7 @@ extends "netcode_reconcile_and_snapshot_stagger.gd"
 ## Sections of netcode_demo.gd.
 
 
-## A snapshot bigger than [member DotNetConfig.mtu] goes out in parts, each applying alone:
+## A snapshot bigger than [member GSNetConfig.mtu] goes out in parts, each applying alone:
 ## ENet fragments an unreliable packet over its MTU and losing any fragment loses the packet.
 ## Every check below is armed (the setting was once declared and read by nothing).
 func _test_snapshot_parts() -> void:
@@ -19,7 +19,7 @@ func _test_snapshot_parts() -> void:
 	host.send_fn = func(peer_id: int, payload: PackedByteArray, d: int) -> void:
 		if peer_id != 2:
 			return
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			var _schema := watcher.receive(payload, 1)
 			return
 		sent.append(payload)
@@ -34,7 +34,7 @@ func _test_snapshot_parts() -> void:
 	var on_client: Array[Movement] = []
 	for i in ENTITIES:
 		var spawned := host.spawner.spawn(&"player", 3, Transform3D.IDENTITY, 0)
-		var server_entity: DotNetIdentity = spawned.value
+		var server_entity: GSNetIdentity = spawned.value
 		var _mirror := watcher.spawner.spawn_remote(&"player", server_entity.net_id, 3, Transform3D.IDENTITY, 0)
 		on_server.append(server_entity.behaviours[0] as Movement)
 		on_client.append(watcher.registry.get_identity(server_entity.net_id).behaviours[0] as Movement)
@@ -63,8 +63,8 @@ func _test_snapshot_parts() -> void:
 
 
 func _parts_check_first_tick(s: Dictionary, ENTITIES: int, MTU: int) -> void:
-	var host: DotNetManager = s.host
-	var watcher: DotNetManager = s.watcher
+	var host: GSNetManager = s.host
+	var watcher: GSNetManager = s.watcher
 	var sent: Array[PackedByteArray] = s.sent
 	var on_server: Array[Movement] = s.on_server
 	var on_client: Array[Movement] = s.on_client
@@ -105,8 +105,8 @@ func _parts_check_first_tick(s: Dictionary, ENTITIES: int, MTU: int) -> void:
 
 
 func _parts_check_lost_part(s: Dictionary, ENTITIES: int) -> Array[PackedByteArray]:
-	var host: DotNetManager = s.host
-	var watcher: DotNetManager = s.watcher
+	var host: GSNetManager = s.host
+	var watcher: GSNetManager = s.watcher
 	var sent: Array[PackedByteArray] = s.sent
 	var on_server: Array[Movement] = s.on_server
 	var on_client: Array[Movement] = s.on_client
@@ -139,8 +139,8 @@ func _parts_check_lost_part(s: Dictionary, ENTITIES: int) -> Array[PackedByteArr
 
 
 func _parts_check_late_and_resent(s: Dictionary, second: Array[PackedByteArray], ENTITIES: int) -> void:
-	var host: DotNetManager = s.host
-	var watcher: DotNetManager = s.watcher
+	var host: GSNetManager = s.host
+	var watcher: GSNetManager = s.watcher
 	var sent: Array[PackedByteArray] = s.sent
 	var on_server: Array[Movement] = s.on_server
 	var on_client: Array[Movement] = s.on_client
@@ -179,7 +179,7 @@ func _parts_check_late_and_resent(s: Dictionary, second: Array[PackedByteArray],
 
 
 func _parts_check_older_after_newer(s: Dictionary, ENTITIES: int) -> void:
-	var host: DotNetManager = s.host
+	var host: GSNetManager = s.host
 	var sent: Array[PackedByteArray] = s.sent
 	var on_server: Array[Movement] = s.on_server
 	var on_client: Array[Movement] = s.on_client
@@ -211,8 +211,8 @@ func _parts_check_older_after_newer(s: Dictionary, ENTITIES: int) -> void:
 
 
 func _parts_check_under_mtu(s: Dictionary, ENTITIES: int) -> void:
-	var host: DotNetManager = s.host
-	var watcher: DotNetManager = s.watcher
+	var host: GSNetManager = s.host
+	var watcher: GSNetManager = s.watcher
 	var sent: Array[PackedByteArray] = s.sent
 	var on_server: Array[Movement] = s.on_server
 	var at: Callable = s.at
@@ -223,7 +223,7 @@ func _parts_check_under_mtu(s: Dictionary, ENTITIES: int) -> void:
 	_check("under the MTU a snapshot is one packet (%d)" % sent.size(), sent.size() == 1)
 	if sent.size() == 1:
 		var whole := sent[0]
-		var reader := DotNetReader.new(whole)
+		var reader := GSNetReader.new(whole)
 		var _tick := reader.read_uint(32)
 		var count := reader.read_uint(12)
 		# Walk the entities with the client's own declarations, then look at what is left.
@@ -234,8 +234,8 @@ func _parts_check_under_mtu(s: Dictionary, ENTITIES: int) -> void:
 
 
 func _parts_check_max_parts(s: Dictionary, MTU: int) -> void:
-	var host: DotNetManager = s.host
-	var watcher: DotNetManager = s.watcher
+	var host: GSNetManager = s.host
+	var watcher: GSNetManager = s.watcher
 	var sent: Array[PackedByteArray] = s.sent
 	var deliver: Callable = s.deliver
 	var at: Callable = s.at
@@ -243,14 +243,14 @@ func _parts_check_max_parts(s: Dictionary, MTU: int) -> void:
 	host.config.max_entities_per_snapshot = 0
 	for i in 200:
 		var spawned := host.spawner.spawn(&"player", 3, Transform3D.IDENTITY, 0)
-		var extra: DotNetIdentity = spawned.value
+		var extra: GSNetIdentity = spawned.value
 		var _mirror := watcher.spawner.spawn_remote(&"player", extra.net_id, 3, Transform3D.IDENTITY, 0)
 	host.server_tick(18)
 	var widest := 0
 	for payload in sent:
 		widest = maxi(widest, payload.size())
-	_check("a snapshot is cut into at most %d parts (%d)" % [DotNetManager.MAX_SNAPSHOT_PARTS, sent.size()],
-		sent.size() == DotNetManager.MAX_SNAPSHOT_PARTS and widest <= MTU)
+	_check("a snapshot is cut into at most %d parts (%d)" % [GSNetManager.MAX_SNAPSHOT_PARTS, sent.size()],
+		sent.size() == GSNetManager.MAX_SNAPSHOT_PARTS and widest <= MTU)
 	var failures_before := watcher.stats.decode_failures
 	for payload in sent:
 		deliver.call(payload)
@@ -269,8 +269,8 @@ func _test_snapshot_thousand() -> void:
 	const OVERFLOW := 3000
 	const MTU := 1200
 
-	_check("the default per-snapshot cap covers a thousand entities (%d)" % DotNetConfig.new().entity_cap(),
-		DotNetConfig.new().entity_cap() >= ENTITIES)
+	_check("the default per-snapshot cap covers a thousand entities (%d)" % GSNetConfig.new().entity_cap(),
+		GSNetConfig.new().entity_cap() >= ENTITIES)
 
 	var host := _parts_manager("ThousandServer", true, MTU)
 	var watcher := _parts_manager("ThousandClient", false, MTU)
@@ -278,7 +278,7 @@ func _test_snapshot_thousand() -> void:
 	host.send_fn = func(peer_id: int, payload: PackedByteArray, d: int) -> void:
 		if peer_id != 2:
 			return
-		if d != DotNetMessage.Delivery.UNRELIABLE:
+		if d != GSNetMessage.Delivery.UNRELIABLE:
 			var _schema := watcher.receive(payload, 1)
 			return
 		sent.append(payload)
@@ -303,7 +303,7 @@ func _test_snapshot_thousand() -> void:
 	ticks = run["ticks"]
 	tick = run["tick"]
 	_check("a first snapshot of %d entities is %d parts, each within the MTU (largest %d)" % [ENTITIES, first_parts, largest],
-		first_parts > 1 and first_parts <= DotNetManager.MAX_SNAPSHOT_PARTS and largest <= MTU)
+		first_parts > 1 and first_parts <= GSNetManager.MAX_SNAPSHOT_PARTS and largest <= MTU)
 	_check("what the sixteen parts could not hold follows within %d ticks: %d of %d arrived" % [ticks, arrived, ENTITIES],
 		arrived == ENTITIES and ticks <= 3)
 	_check("and the decode is clean (%d)" % watcher.stats.decode_failures, watcher.stats.decode_failures == 0)
@@ -311,15 +311,15 @@ func _test_snapshot_thousand() -> void:
 	# More than sixteen parts hold: the rest waits for a later tick, nothing overflows or fails to decode.
 	for i in range(ENTITIES, OVERFLOW):
 		var spawned := host.spawner.spawn(&"player", 3, Transform3D.IDENTITY, 0)
-		var server_entity: DotNetIdentity = spawned.value
+		var server_entity: GSNetIdentity = spawned.value
 		var _mirror := watcher.spawner.spawn_remote(&"player", server_entity.net_id, 3, Transform3D.IDENTITY, 0)
 	host.server_tick(tick)
 	var failures_before := watcher.stats.decode_failures
 	for payload in sent:
 		var _r := watcher.receive_snapshot(payload)
 	_check("a world too big for sixteen parts is cut at %d, still within the MTU, and decodes (%d)" % [sent.size(), watcher.stats.decode_failures],
-		sent.size() <= DotNetManager.MAX_SNAPSHOT_PARTS and watcher.stats.decode_failures == failures_before)
-	_check("and the overflow was logged once", host._warned_parts or sent.size() < DotNetManager.MAX_SNAPSHOT_PARTS)
+		sent.size() <= GSNetManager.MAX_SNAPSHOT_PARTS and watcher.stats.decode_failures == failures_before)
+	_check("and the overflow was logged once", host._warned_parts or sent.size() < GSNetManager.MAX_SNAPSHOT_PARTS)
 
 	host.stop()
 	watcher.stop()
@@ -332,7 +332,7 @@ func _test_snapshot_thousand() -> void:
 
 ## The same thousand-entity world built by the native core and by GDScript: every part byte for byte.
 func _thousand_native_matches(count: int, mtu: int) -> void:
-	if not DotNetNative.load_library().ok:
+	if not GSNetNative.load_library().ok:
 		print("  native library not loaded; thousand-entity native comparison skipped")
 		return
 	var runs: Array = []
@@ -341,7 +341,7 @@ func _thousand_native_matches(count: int, mtu: int) -> void:
 		var watcher := _parts_manager("ThousandNativeClient%s" % native, false, mtu)
 		var sent: Array[PackedByteArray] = []
 		host.send_fn = func(peer_id: int, payload: PackedByteArray, d: int) -> void:
-			if peer_id == 2 and d == DotNetMessage.Delivery.UNRELIABLE:
+			if peer_id == 2 and d == GSNetMessage.Delivery.UNRELIABLE:
 				sent.append(payload)
 			elif peer_id == 2:
 				var _schema := watcher.receive(payload, 1)
@@ -378,11 +378,11 @@ func _thousand_native_matches(count: int, mtu: int) -> void:
 
 
 ## Spawns [param count] players on [param host], mirrored on [param watcher], each at x = 1 + index.
-func _spawn_mirrored(host: DotNetManager, watcher: DotNetManager, count: int,
+func _spawn_mirrored(host: GSNetManager, watcher: GSNetManager, count: int,
 		on_server: Array[Movement], on_client: Array[Movement]) -> void:
 	for i in count:
 		var spawned := host.spawner.spawn(&"player", 3, Transform3D.IDENTITY, 0)
-		var server_entity: DotNetIdentity = spawned.value
+		var server_entity: GSNetIdentity = spawned.value
 		var _mirror := watcher.spawner.spawn_remote(&"player", server_entity.net_id, 3, Transform3D.IDENTITY, 0)
 		on_server.append(server_entity.behaviours[0] as Movement)
 		on_client.append(watcher.registry.get_identity(server_entity.net_id).behaviours[0] as Movement)
@@ -390,7 +390,7 @@ func _spawn_mirrored(host: DotNetManager, watcher: DotNetManager, count: int,
 
 
 ## Ticks [param host] until every entity reached [param watcher] (at most 4 ticks); returns the counts.
-func _thousand_ticks(host: DotNetManager, watcher: DotNetManager, sent: Array[PackedByteArray],
+func _thousand_ticks(host: GSNetManager, watcher: GSNetManager, sent: Array[PackedByteArray],
 		on_client: Array[Movement], count: int, tick: int) -> Dictionary:
 	var largest := 0
 	var first_parts := 0
@@ -437,7 +437,7 @@ func _check_thread_variants(off: Dictionary, extra: Dictionary) -> void:
 						_first_difference(serial["states"], other["states"]), other["pooled"]],
 				_first_difference(serial["payloads"], other["payloads"]) == ""
 					and _first_difference(serial["states"], other["states"]) == ""
-					and (not DotParallel.available() or int(other["pooled"]) > 0))
+					and (not GSParallel.available() or int(other["pooled"]) > 0))
 
 
 ## Send views exist only for what a peer is sent, not one per behaviour of every entity for
@@ -463,7 +463,7 @@ func _test_view_count() -> void:
 		for i in 20:
 			var owner_peer := 2 if i == 0 else (3 if i == 6 else 0)
 			var x := 0.0 if i < 6 else (100.0 if i < 12 else 1000.0)
-			var identity: DotNetIdentity = host.spawner.spawn(&"counted", owner_peer, Transform3D(Basis.IDENTITY, Vector3(x, 0, 0)), 0).value
+			var identity: GSNetIdentity = host.spawner.spawn(&"counted", owner_peer, Transform3D(Basis.IDENTITY, Vector3(x, 0, 0)), 0).value
 			all.append(identity)
 		var behaviours := 0
 		for tick in range(1, 5):
@@ -471,14 +471,14 @@ func _test_view_count() -> void:
 		var views := 0
 		var far_views := 0
 		for i in all.size():
-			var identity: DotNetIdentity = all[i]
+			var identity: GSNetIdentity = all[i]
 			behaviours += identity.behaviours.size()
 			for behaviour in identity.behaviours:
 				views += behaviour._views.size()
 				if i >= 12:
 					far_views += behaviour._views.size()
 		counts[workers] = [views, far_views, behaviours]
-		for identity: DotNetIdentity in host.registry.all():
+		for identity: GSNetIdentity in host.registry.all():
 			var body := identity.get_parent()
 			if body != null and body.is_inside_tree():
 				body.get_parent().remove_child(body)
@@ -512,7 +512,7 @@ func _test_first_entity_mid_tick() -> void:
 		var _adopted := host.receive(modern, peer)
 	var keep: Array = []
 	for peer in [2, 3, 0, 0]:
-		var identity: DotNetIdentity = host.spawner.spawn(&"counted", peer, Transform3D.IDENTITY, 0).value
+		var identity: GSNetIdentity = host.spawner.spawn(&"counted", peer, Transform3D.IDENTITY, 0).value
 		keep.append(identity)
 
 	# The spawner is the one that spawns peer 3's... a third peer, joined with no entity.
@@ -524,7 +524,7 @@ func _test_first_entity_mid_tick() -> void:
 	spawner_identity.get_parent().add_child(driver)
 	spawner_identity.behaviours = [driver]
 	driver.identity = spawner_identity
-	driver._bind(DotNetConfig.new())
+	driver._bind(GSNetConfig.new())
 	driver.host = host
 	driver.peer = 4
 	driver.at_tick = 3
@@ -538,15 +538,15 @@ func _test_first_entity_mid_tick() -> void:
 	_check("mid-tick: peer 4's entity exists, spawned during tick 3", driver.spawned
 		and not host.registry.owned_by(4).is_empty())
 	_check("mid-tick: the snapshots were built on workers (%d)" % pooled_runs,
-		not DotParallel.available() or pooled_runs > 0)
+		not GSParallel.available() or pooled_runs > 0)
 	_check("mid-tick: interest asked about the late observer (%d asks)" % probe.asks_with_observer,
 		probe.asks_with_observer > 0)
 	_check("mid-tick: never asked about an observer that was not frozen (%d asks)" % probe.unfrozen_asks,
-		not DotParallel.available() or probe.unfrozen_asks == 0)
+		not GSParallel.available() or probe.unfrozen_asks == 0)
 	_check("mid-tick: every freeze was undone",
 		not host.registry.owned_by(4)[0].is_position_frozen())
 
-	for identity: DotNetIdentity in host.registry.all():
+	for identity: GSNetIdentity in host.registry.all():
 		var body := identity.get_parent()
 		if body != null and body.is_inside_tree():
 			body.get_parent().remove_child(body)
@@ -554,7 +554,7 @@ func _test_first_entity_mid_tick() -> void:
 	host.free()
 
 
-## A [method DotNetBehaviour.peer_view_snapshot] in the fields the native core keeps, keys sorted:
+## A [method GSNetBehaviour.peer_view_snapshot] in the fields the native core keeps, keys sorted:
 ## the GDScript-only memo fields dropped, and a view holding nothing else read as none.
 func _normal_view(view: Dictionary) -> Dictionary:
 	if view.is_empty():
@@ -573,7 +573,7 @@ func _normal_view(view: Dictionary) -> Dictionary:
 	return {} if empty else out
 
 
-## [member DotNetConfig.native_reads] for the next [method _threads_scenario] runs; -1 keeps the default.
+## [member GSNetConfig.native_reads] for the next [method _threads_scenario] runs; -1 keeps the default.
 var _scenario_native_reads := -1
 
 
@@ -595,7 +595,7 @@ func _threads_scenario(
 	# 1500 B per window of ten ticks (the window is scripted below): well under what the
 	# entities in view want, so the accumulator decides who waits.
 	host.config.per_client_budget = 1500
-	var distance := DotNetInterestDistance.new()
+	var distance := GSNetInterestDistance.new()
 	distance.radius = 14.0
 	distance.evaluation_interval_sec = 0.0
 	host.interest = distance
@@ -611,9 +611,9 @@ func _threads_scenario(
 	if rich:
 		# A cached answer is kept for good and expired by hand below (a wall-clock interval
 		# would expire at a different tick in each run); a leaver lingers for good.
-		var strategy: DotNetInterest = distance
+		var strategy: GSNetInterest = distance
 		if variant == "grid":
-			var grid := DotNetInterestGrid.new()
+			var grid := GSNetInterestGrid.new()
 			grid.cell_size = 8.0
 			grid.radius = 14.0
 			strategy = grid
@@ -626,7 +626,7 @@ func _threads_scenario(
 	var payloads: Array = []
 	var peers_fed := {}
 	host.send_fn = func(peer_id: int, payload: PackedByteArray, d: int) -> void:
-		if d == DotNetMessage.Delivery.UNRELIABLE:
+		if d == GSNetMessage.Delivery.UNRELIABLE:
 			payloads.append([peer_id, payload])
 			peers_fed[peer_id] = true
 	host.start()
@@ -638,7 +638,7 @@ func _threads_scenario(
 	var modern := host.messages.schema_payload()
 	host.messages.features = 0
 	var legacy := host.messages.schema_payload()
-	host.messages.features = DotNetMessageRegistry.FEATURE_UNCHANGED_RUNS | DotNetMessageRegistry.FEATURE_INPUT_LEAD
+	host.messages.features = GSNetMessageRegistry.FEATURE_UNCHANGED_RUNS | GSNetMessageRegistry.FEATURE_INPUT_LEAD
 	for i in PEERS:
 		var peer := 2 + i
 		host.add_peer(peer)
@@ -648,7 +648,7 @@ func _threads_scenario(
 	for i in PEERS + ENTITIES:
 		# The first ten are the peers' own (the observers interest measures from).
 		var owner := 2 + i if i < PEERS else 0
-		var spawned: DotNetIdentity = host.spawner.spawn(&"counted", owner, Transform3D.IDENTITY, 0).value
+		var spawned: GSNetIdentity = host.spawner.spawn(&"counted", owner, Transform3D.IDENTITY, 0).value
 		spawned.interest_linger_sec = 1.0e6 if rich else 0.0
 		# Two always-relevant entities: the pinned path under a cache hit.
 		spawned.always_relevant = rich and i >= PEERS and i < PEERS + 2
