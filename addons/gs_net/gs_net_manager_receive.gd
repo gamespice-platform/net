@@ -88,7 +88,7 @@ func _apply_snapshot_entities(reader: GSNetReader, count: int, tick: int) -> GSR
 	while left > 0:
 		# The native batch takes every entity it holds; one it does not is the script's, below.
 		if batch != null and not reader.exhausted:
-			left = batch.apply(reader, left, tick)
+			left = batch.apply(interpolator, reader, left, tick)
 			if left == 0:
 				break
 		left -= 1
@@ -116,7 +116,7 @@ func _apply_snapshot_entities(reader: GSNetReader, count: int, tick: int) -> GSR
 			stats.note_decode_failure()
 			return applied
 		if batch != null:
-			batch.hold(identity)
+			batch.hold(interpolator, identity)
 	return null
 
 

@@ -14,7 +14,6 @@ const CLASS := &"GSSimSnapshotBatch"
 static var enabled := true
 
 var _native: Object
-var _interpolator: GSNetInterpolator
 ## net_id -> true: an entity that can never be held, not asked again until it is forgotten.
 var _never := {}
 ## The arguments of [code]apply[/code], kept: ([code]bit, end bit, entities, id bits, tick[/code]).
@@ -29,32 +28,31 @@ static func create(config: GSNetConfig, interpolator: GSNetInterpolator) -> GSNe
 		return null
 	var batch := GSNetSnapshotBatch.new()
 	batch._native = ClassDB.instantiate(CLASS)
-	batch._interpolator = interpolator
 	return batch if batch._native != null else null
 
 
-## Applies entities of [param reader]'s snapshot at [param tick] until one is not the batch's. Returns how many of [param left] are still to read, the reader at the first of them.
-func apply(reader: GSNetReader, left: int, tick: int) -> int:
+## Applies entities of [param reader]'s snapshot at [param tick] for [param interpolator] (which holds the batch, so the batch keeps no reference to it) until one is not the batch's. Returns how many of [param left] are still to read, the reader at the first of them.
+func apply(interpolator: GSNetInterpolator, reader: GSNetReader, left: int, tick: int) -> int:
 	var args := _args
 	args[0] = reader._bit_pos
 	args[1] = reader._end_bits
 	args[2] = left
 	args[3] = GSNetRegistry.ID_BITS
 	args[4] = tick
-	var out: PackedInt64Array = _native.apply(reader._bytes, args, _interpolator._native)
+	var out: PackedInt64Array = _native.apply(reader._bytes, args, interpolator._native)
 	if out.size() != 2 or int(out[1]) >= left:
 		return left
 	reader._bit_pos = out[0]
-	_interpolator._note_timeline(tick)
+	interpolator._note_timeline(tick)
 	return out[1]
 
 
 ## Offers [param identity], just applied by the script, to the batch: held from the next snapshot on if all of it is the batch's to do.
-func hold(identity: GSNetIdentity) -> void:
+func hold(interpolator: GSNetInterpolator, identity: GSNetIdentity) -> void:
 	var net_id := identity.net_id
 	if _never.has(net_id) or _native.has(net_id) or identity.is_predicted():
 		return
-	var track: Object = _interpolator._tracks.get(net_id)
+	var track: Object = interpolator._tracks.get(net_id)
 	if track == null:
 		return
 
