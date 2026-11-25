@@ -10,90 +10,11 @@ const CHANNEL := "net.interp"
 ## Samples kept per entity.
 ##
 ## Enough to cover the buffer plus a burst of out-of-order arrivals.
-const TRACK_CAPACITY := 32
-
-## One entity's recent states, ordered by tick.
-class Track extends RefCounted:
-	var net_id: int
-	## Array of {tick, at_ms, values}
-	var samples: Array[Dictionary] = []
-	## What [method GSNetInterpolator.apply] writes: the behaviours it was built for, their
-	## declaration counts, and each one's interpolated properties in declaration order.
-	var plan_behaviours: Array = []
-	var plan_sizes := PackedInt32Array()
-	var plan_props: Array = []
-	## What [method GSNetInterpolator.apply] still adds to each position it draws: the
-	## part of a jump out of an extrapolation not yet eased away. property -> Vector3/2.
-	var offsets: Dictionary = {}
-	## The two samples the last drawn frame extrapolated from, or empty when it was
-	## between two samples. See [method GSNetInterpolator._ease_resume].
-	var ahead_from: Array[Dictionary] = []
-	## The settled skip's reference ([member GSNetConfig.skip_settled_interp]): the draw written in
-	## [member drawn_frame], emptied by [method push] (its snapshot hooks may have written over it).
-	var drawn: Dictionary = {}
-	var drawn_frame: int = -1
-
-	func _init(p_net_id: int) -> void:
-		net_id = p_net_id
-
-	func push(tick: int, values: Dictionary) -> void:
-		# Out-of-order arrivals are normal on an unreliable channel. Inserting in
-		# tick order rather than appending means the bracket search stays a simple
-		# scan, and a late packet still contributes rather than being discarded.
-		drawn = {}
-		var entry := {
-			"tick": tick,
-			"at_ms": Time.get_ticks_msec(),
-			"values": values,
-		}
-
-		var index := samples.size()
-		while index > 0 and int(samples[index - 1]["tick"]) > tick:
-			index -= 1
-
-		if index > 0 and int(samples[index - 1]["tick"]) == tick:
-			# A duplicate tick, usually a retransmit. Merge rather than replace:
-			# a delta only carries changed properties.
-			var existing: Dictionary = samples[index - 1]["values"]
-			for property in values:
-				existing[property] = values[property]
-			return
-
-		samples.insert(index, entry)
-
-		while samples.size() > TRACK_CAPACITY:
-			samples.pop_front()
-
-	## [method push] for an entity whose state did not change: a sample at [param tick] with the newest sample's values, copied. False, with nothing done, when there is no older sample to repeat (the caller pushes the values itself).
-	func push_repeat(tick: int, at_ms: int) -> bool:
-		if samples.is_empty():
-			return false
-		var newest: Dictionary = samples[samples.size() - 1]
-		if int(newest["tick"]) >= tick:
-			return false
-		drawn = {}
-		samples.append({
-			"tick": tick,
-			"at_ms": at_ms,
-			"values": (newest["values"] as Dictionary).duplicate(),
-		})
-		while samples.size() > TRACK_CAPACITY:
-			samples.pop_front()
-		return true
-
-	func newest_tick() -> int:
-		return int(samples[samples.size() - 1]["tick"]) if not samples.is_empty() else -1
-
-	func oldest_tick() -> int:
-		return int(samples[0]["tick"]) if not samples.is_empty() else -1
-
-	func is_empty() -> bool:
-		return samples.is_empty()
-
+const TRACK_CAPACITY := GSNetInterpTrack.CAPACITY
 
 var config: GSNetConfig
 
-## net_id -> Track
+## net_id -> GSNetInterpTrack
 var _tracks: Dictionary = {}
 
 ## Every snapshot tick pushed, sorted, the newest [constant TRACK_CAPACITY]: [method bracket_at].
@@ -184,9 +105,9 @@ func is_native() -> bool:
 ## Records a snapshot's values for an entity.
 func push(net_id: int, tick: int, values: Dictionary) -> void:
 	if not _tracks.has(net_id):
-		_tracks[net_id] = Track.new(net_id)
+		_tracks[net_id] = GSNetInterpTrack.new(net_id)
 
-	(_tracks[net_id] as Track).push(tick, values)
+	(_tracks[net_id] as GSNetInterpTrack).push(tick, values)
 	if _native != null:
 		_native.push(net_id, tick, values)
 	_note_timeline(tick)
@@ -200,7 +121,7 @@ func push_repeat_batch(net_ids: PackedInt64Array, tick: int) -> PackedInt64Array
 	var done := PackedInt64Array()
 	var now := Time.get_ticks_msec()
 	for net_id in net_ids:
-		var track: Track = _tracks.get(net_id)
+		var track: GSNetInterpTrack = _tracks.get(net_id)
 		if track != null and track.push_repeat(tick, now):
 			done.append(net_id)
 		else:
@@ -212,7 +133,7 @@ func push_repeat_batch(net_ids: PackedInt64Array, tick: int) -> PackedInt64Array
 		if _native_repeat:
 			missed = _native.push_repeat(done, tick)
 		for net_id in missed:
-			var samples: Array[Dictionary] = (_tracks[net_id] as Track).samples
+			var samples: Array[Dictionary] = (_tracks[net_id] as GSNetInterpTrack).samples
 			_native.push(net_id, tick, samples[samples.size() - 1]["values"])
 	_note_timeline(tick)
 	return left
@@ -342,7 +263,7 @@ func _adapt() -> void:
 ##
 ## Empty when there is nothing to show yet (one sample cannot be interpolated). [param server_tick] is a float on purpose: a renderer runs between ticks (see [method GSNetManager.interpolate_frame]).
 func sample(net_id: int, server_tick: float) -> Dictionary:
-	var track: Track = _tracks.get(net_id)
+	var track: GSNetInterpTrack = _tracks.get(net_id)
 	if track == null or track.samples.is_empty():
 		return {}
 
@@ -389,7 +310,7 @@ func sample(net_id: int, server_tick: float) -> Dictionary:
 ## past the end, null when unknown or older than the buffer. A jump over [param cut] after it
 ## is a teleport. Counts nothing, never extrapolates (docs/prediction.md#bumping-a-remote).
 func value_at(net_id: int, property: StringName, render_tick: float, cut: float = 0.0) -> Variant:
-	var track: Track = _tracks.get(net_id)
+	var track: GSNetInterpTrack = _tracks.get(net_id)
 	if track == null or track.is_empty():
 		return null
 	var samples := track.samples
@@ -435,7 +356,7 @@ func bracket_at(render_tick: float) -> Vector2i:
 ## [param newer_tick] ([method bracket_at]) at [param render_tick]; null when either sample is
 ## missing, or with [param cut] past a teleport as in [method value_at]. Counts nothing.
 func value_between(net_id: int, property: StringName, older_tick: int, newer_tick: int, render_tick: float, cut: float = 0.0) -> Variant:
-	var track: Track = _tracks.get(net_id)
+	var track: GSNetInterpTrack = _tracks.get(net_id)
 	if track == null or track.is_empty():
 		return null
 	var samples := track.samples
@@ -483,7 +404,7 @@ static func _jumps_after(samples: Array, from: int, property: StringName, cut: f
 ## Continues past the newest sample, briefly.
 ##
 ## Bounded by [member GSNetConfig.max_extrapolation_sec]; past that the entity holds position, since a wrong guess that keeps moving snaps back hard when the stream resumes.
-func _extrapolate(track: Track, render_tick: float) -> Dictionary:
+func _extrapolate(track: GSNetInterpTrack, render_tick: float) -> Dictionary:
 	var newest: Dictionary = track.samples[track.samples.size() - 1]
 	var values: Dictionary = newest["values"]
 
@@ -620,7 +541,7 @@ func _apply(identity: GSNetIdentity, server_tick: float, frame: int) -> void:
 	var values := sample(identity.net_id, server_tick)
 	if values.is_empty():
 		return
-	var track: Track = _tracks.get(identity.net_id)
+	var track: GSNetInterpTrack = _tracks.get(identity.net_id)
 	values = _ease_resume(track, values, float(server_tick) - delay_ticks())
 
 	var behaviours := identity.behaviours
@@ -683,7 +604,7 @@ func apply_frame(identities: Array[GSNetIdentity], server_tick: float) -> void:
 
 ## Whether [param track]'s write plan still matches [param behaviours]: a game with forty
 ## replicated properties and four interpolated would otherwise walk all forty per frame.
-static func _plan_fits(track: Track, behaviours: Array[GSNetBehaviour]) -> bool:
+static func _plan_fits(track: GSNetInterpTrack, behaviours: Array[GSNetBehaviour]) -> bool:
 	if track.plan_behaviours.size() != behaviours.size():
 		return false
 	for b in range(behaviours.size()):
@@ -692,7 +613,7 @@ static func _plan_fits(track: Track, behaviours: Array[GSNetBehaviour]) -> bool:
 	return true
 
 
-static func _build_plan(track: Track, behaviours: Array[GSNetBehaviour]) -> void:
+static func _build_plan(track: GSNetInterpTrack, behaviours: Array[GSNetBehaviour]) -> void:
 	track.plan_behaviours = behaviours.duplicate()
 	track.plan_sizes.resize(behaviours.size())
 	track.plan_props = []
@@ -708,7 +629,7 @@ static func _build_plan(track: Track, behaviours: Array[GSNetBehaviour]) -> void
 ## Draws [param values] with what is left of any jump out of an extrapolation added, and notes what this frame extrapolated from. Positions (Vector3, Vector2) only.
 ##
 ## The jump is measured exactly: what last frame's extrapolation would draw now, less what is drawn now. Off until a host drives frames ([method advance]), and for a jump the size of a teleport.
-func _ease_resume(track: Track, values: Dictionary, render_tick: float) -> Dictionary:
+func _ease_resume(track: GSNetInterpTrack, values: Dictionary, render_tick: float) -> Dictionary:
 	if track == null or _frame_elapsed <= 0.0:
 		return values
 

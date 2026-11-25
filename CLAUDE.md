@@ -40,7 +40,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | `addons/gs_net/bandwidth/`, `stats/` | per-peer budget with a starvation-bounded accumulator; `GSNetStats` |
 | `addons/gs_net/profile/` | `GSNetProfileLink`: opt-in carrier for GameSpice Core's `GSProfileRuntime` (admin requests up, rows down, late-joiner snapshot); `attach` before start is the only switch; `GSNetCostProbe`: reports bytes per message class (messages, snapshots, schema) to GameSpice Profiler's `GSProfilerNetCost` when that addon is installed and recording (looked up by name, no dependency; one bool test otherwise) |
 | `addons/gs_net/testing/gs_net_udp_relay.gd` | a lossy UDP relay for tests. No `class_name`: preload by path |
-| `examples/` | `netcode_demo`, `diagnostics_demo`, `loss_demo`, `relay_demo`, `transport_fit_selftest`; `netcode_demo`'s sections live in `examples/selftest/` as a chain of scripts (`netcode_base` < `netcode_tests` < `netcode_messages_and_replication` to `netcode_unchanged_and_lossy_lead`), each extending the one before, so a helper sits in the file of its first caller or above |
+| `examples/` | `netcode_demo`, `diagnostics_demo`, `loss_demo`, `relay_demo`, `transport_fit_selftest`; `netcode_demo`'s sections live in `examples/selftest/` as a chain of scripts (`netcode_base` < `netcode_tests` < `netcode_messages_and_replication` < `netcode_unchanged_and_lossy_lead` to `netcode_snapshot_batches`), each extending the one before, so a helper sits in the file of its first caller or above |
 
 ## Running and testing
 

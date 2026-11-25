@@ -219,3 +219,20 @@ func peer_view_snapshot(peer_id: int) -> Dictionary:
 		return _native_core.view_snapshot(self, peer_id)
 	var view: PeerView = _views.get(peer_id)
 	return view.snapshot() if view != null and not view.is_fresh() else {}
+
+
+func describe() -> Dictionary:
+	var properties := []
+	for declaration in net_vars:
+		properties.append({
+			"property": String(declaration.property),
+			"type": GSNetVar.Type.keys()[declaration.type],
+			"bits": declaration.estimated_bits(),
+			"audience": GSNetVar.Audience.keys()[declaration.audience],
+		})
+
+	return {
+		"node": name,
+		"bound": _registered,
+		"vars": properties,
+	}

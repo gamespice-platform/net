@@ -112,10 +112,6 @@ func _read_for_send(property: StringName) -> Variant:
 	return value
 
 
-## Whether a client's native snapshot batch ([GSNetSnapshotBatch]) may set this behaviour's properties itself. A behaviour that overrides [method _net_write_property] must turn this off (a script cannot be asked whether it overrides), or the batch skips the override.
-var batch_writes := true
-
-
 ## Writes a property. Override to validate or to trigger side effects.
 func _net_write_property(property: StringName, value: Variant) -> void:
 	set(property, value)
@@ -773,23 +769,6 @@ func find_var(property: StringName) -> GSNetVar:
 		if declaration.property == property:
 			return declaration
 	return null
-
-
-func describe() -> Dictionary:
-	var properties := []
-	for declaration in net_vars:
-		properties.append({
-			"property": String(declaration.property),
-			"type": GSNetVar.Type.keys()[declaration.type],
-			"bits": declaration.estimated_bits(),
-			"audience": GSNetVar.Audience.keys()[declaration.audience],
-		})
-
-	return {
-		"node": name,
-		"bound": _registered,
-		"vars": properties,
-	}
 
 
 # Worker-thread variants of [method collect_for_peer], [method write_state] and [method state_bits], used when [member GSNetConfig.snapshot_workers] is set. Copies on purpose: routing the inline path through an [EncodeCache] cost every game about 14%.

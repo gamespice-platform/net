@@ -30,6 +30,10 @@ var _read_now: Dictionary = {}
 var _views: Dictionary = {}
 
 var _registered: bool = false
+
+## Whether a client's native snapshot batch ([GSNetSnapshotBatch]) may set this behaviour's properties itself. A behaviour that overrides [method _net_write_property] must turn this off (a script cannot be asked whether it overrides), or the batch skips the override.
+var batch_writes := true
+
 ## GameSpice Sim's snapshot codec for this behaviour ([GSNetSimCodec]), or null for the GDScript one.
 var _sim_codec: Object = null
 var _config: GSNetConfig = null

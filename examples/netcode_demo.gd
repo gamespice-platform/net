@@ -1,4 +1,4 @@
-extends "selftest/netcode_unchanged_and_lossy_lead.gd"
+extends "selftest/netcode_snapshot_batches.gd"
 
 ## Runs a server and a client in one process over a loopback that can delay, reorder and drop packets, and checks the netcode works.
 ##
@@ -55,6 +55,7 @@ func _run() -> void:
 	_test_snapshot_parts()
 	_test_snapshot_thousand()
 	_test_unchanged_entities()
+	_test_snapshot_batches()
 	_test_idle_snapshots()
 	_test_snapshot_due()
 	_test_snapshot_threads()
