@@ -140,8 +140,7 @@ func _unchanged_savings(rig: QuietRig) -> void:
 		rig.all_at(on_legacy, 6) == ENTITIES)
 	var tracked := 0
 	for i in ENTITIES:
-		var track: Variant = fresh.interpolator._tracks.get(on_fresh[i].identity.net_id)
-		if track != null and int(track.newest_tick()) == 6:
+		if fresh.interpolator.newest_tick(on_fresh[i].identity.net_id) == 6:
 			tracked += 1
 	_check("the interpolator holds a sample at that tick for each (%d)" % tracked, tracked == ENTITIES)
 	_check("and both acknowledge it (%d, %d)" % [fresh.ack_tick(), legacy.ack_tick()],

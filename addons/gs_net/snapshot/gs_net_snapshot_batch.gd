@@ -1,6 +1,6 @@
 class_name GSNetSnapshotBatch
 extends RefCounted
-## GameSpice Sim's native snapshot batch ([code]GSSimSnapshotBatch[/code]): a client's whole-snapshot decode and push in one call, for remote entities whose per-entity work is data only. It does what [method GSNetManager._apply_entity] does for a remote one: decodes each behaviour's state into its properties and [code]_baseline[/code], calls [code]_net_state_applied[/code], and pushes the interpolated values to the track and to [code]GSSimInterpolator[/code].
+## GameSpice Sim's native snapshot batch ([code]GSSimSnapshotBatch[/code]): a client's whole-snapshot decode and push in one call, for remote entities whose per-entity work is data only. It does what [method GSNetManager._apply_entity] does for a remote one: decodes each behaviour's state into its properties and [code]_baseline[/code], calls [code]_net_state_applied[/code], and pushes the interpolated values to [code]GSSimInterpolator[/code] (and to the GDScript track, when the interpolator keeps one).
 ## An entity it does not hold (not seen yet, predicted, or with a change handler, a script-read declaration or [member GSNetBehaviour.batch_writes] off) and any body it cannot decode the script's way is left to the script, so errors, logs and counters stay the script's. Optional like [GSNetSimCodec]: without gs-sim, with [member GSNetConfig.snapshot_batch] off, or without its interpolator, the per-entity loop runs alone. docs/native.md.
 
 const CLASS := &"GSSimSnapshotBatch"
@@ -47,9 +47,10 @@ func hold(interpolator: GSNetInterpolator, identity: GSNetIdentity) -> void:
 	var net_id := identity.net_id
 	if _never.has(net_id) or _native.has(net_id) or identity.is_predicted():
 		return
-	var track: Object = interpolator._tracks.get(net_id)
-	if track == null:
+	if not interpolator.has_track(net_id):
 		return
+	# Null when the library holds the only tracks (GSNetInterpolator._native_only).
+	var track: Object = interpolator._tracks.get(net_id)
 
 	var parts: Array = []
 	for behaviour in identity.behaviours:

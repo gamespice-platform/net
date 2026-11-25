@@ -68,11 +68,13 @@ func _unchanged_batch_parity() -> void:
 
 
 ## What one run of [method _snapshot_batch_parity] leaves behind.
-func _snapshot_batch_run(batch: bool) -> Dictionary:
+func _snapshot_batch_run(batch: bool, native := true, tracks_only := true) -> Dictionary:
 	const ENTITIES := 12
 	var rig := _unchanged_rig(ENTITIES)
 	var fresh := rig.fresh
 	fresh.config.snapshot_batch = batch
+	fresh.config.sim_interp = native
+	fresh.config.sim_interp_tracks_only = tracks_only
 	fresh.interpolator = GSNetInterpolator.new(fresh.config)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242
@@ -88,7 +90,7 @@ func _snapshot_batch_run(batch: bool) -> Dictionary:
 			rig.deliver(tick - 3)
 		tick += 3
 	var held: int = fresh.interpolator.snapshot_batch.size() if fresh.interpolator.snapshot_batch != null else 0
-	var out := {"held": held, "samples": [], "applied": [], "last": [], "baseline": [], "newest": []}
+	var out := {"held": held, "native_only": fresh.interpolator._native_only, "samples": [], "applied": [], "last": [], "baseline": [], "newest": [], "reads": [], "track": []}
 	for i in ENTITIES:
 		var behaviour = rig.on_fresh[i]
 		var net_id: int = behaviour.identity.net_id
@@ -97,8 +99,19 @@ func _snapshot_batch_run(batch: bool) -> Dictionary:
 		(out["applied"] as Array).append(behaviour.position)
 		(out["last"] as Array).append(behaviour.last_applied)
 		(out["baseline"] as Array).append(behaviour._baseline.duplicate())
-		var track: Variant = fresh.interpolator._tracks.get(net_id)
-		(out["newest"] as Array).append(-1 if track == null else int(track.newest_tick()))
+		(out["newest"] as Array).append(fresh.interpolator.newest_tick(net_id))
+		for sample: Dictionary in fresh.interpolator.track_samples(net_id):
+			(out["track"] as Array).append([sample["tick"], sample["values"]])
+		# The reads that do not draw, with and without a teleport cut, at and between samples.
+		for t in [2.0, 3.0, 4.5, 10.0, 21.5, 30.0, 41.0, 44.0, 50.0]:
+			var bracket := fresh.interpolator.bracket_at(t)
+			for cut in [0.0, 30.0]:
+				(out["reads"] as Array).append([
+					fresh.interpolator.value_at(net_id, &"position", t, cut),
+					fresh.interpolator.value_between(net_id, &"position", bracket.x, bracket.y, t, cut),
+					fresh.interpolator.value_between(net_id, &"position", bracket.x - 3, bracket.y, t, cut),
+					fresh.interpolator.value_at(net_id, &"missing", t, cut),
+				])
 	rig.host.stop()
 	rig.fresh.stop()
 	rig.legacy.stop()
@@ -116,9 +129,17 @@ func _snapshot_batch_parity() -> void:
 	var got := _snapshot_batch_run(true)
 	if int(got["held"]) == 0 and not ClassDB.class_exists(GSNetSnapshotBatch.CLASS):
 		print("  (native snapshot batch not available, parity skipped)")
-		_skipped_checks += 6
+		_skipped_checks += 16
 		return
 	_check("snapshot batch parity: the batch holds the entities (%d of 12)" % got["held"],
 		int(got["held"]) == 12 and int(reference["held"]) == 0)
-	for key in ["samples", "applied", "last", "baseline", "newest"]:
+	for key in ["samples", "applied", "last", "baseline", "newest", "reads", "track"]:
 		_check("snapshot batch parity: %s match the script path" % key, got[key] == reference[key])
+	# The library holding the only tracks against the whole script path (no native interpolator)
+	# and against the native one mirrored by GDScript tracks.
+	var script_only := _snapshot_batch_run(false, false)
+	var mirrored := _snapshot_batch_run(true, true, false)
+	_check("native-only tracks: the batch run keeps no GDScript track", bool(got["native_only"]) and not bool(mirrored["native_only"]))
+	for key in ["samples", "applied", "last", "baseline", "newest", "reads", "track"]:
+		_check("native-only tracks: %s match the script interpolator and the mirrored one" % key,
+			got[key] == script_only[key] and got[key] == mirrored[key])

@@ -65,12 +65,16 @@ var _last_late_tick: int = -1
 var _late_fed: bool = false
 
 ## GameSpice Sim's native twin of the tracks and of [method apply]'s draw, or null: see
-## [member GSNetConfig.sim_interp]. The GDScript tracks are kept as well, for
-## [method value_at], [method bracket_at] and lag compensation.
+## [member GSNetConfig.sim_interp]. With [member GSNetConfig.sim_interp_tracks_only] and a library that answers
+## [method value_at], [method value_between] and [method track_samples] itself the samples live there alone
+## ([member _native_only]); otherwise the GDScript tracks mirror them.
 const NATIVE_CLASS := &"GSSimInterpolator"
 ## Off for a test or a bench that wants the GDScript path in a process with the library.
 static var native_enabled := true
 var _native: Object = null
+## Whether the native interpolator holds the only tracks: no [GSNetInterpTrack] is kept, and
+## every read of a track goes to the library.
+var _native_only := false
 ## Whether the library takes a whole frame in one call ([code]apply_all[/code]); an older build
 ## only has the per-entity [code]apply[/code].
 var _native_all := false
@@ -92,6 +96,7 @@ func _init(p_config: GSNetConfig) -> void:
 		_native = ClassDB.instantiate(NATIVE_CLASS)
 		_native_all = ClassDB.class_has_method(NATIVE_CLASS, &"apply_all")
 		_native_repeat = ClassDB.class_has_method(NATIVE_CLASS, &"push_repeat")
+		_native_only = config.sim_interp_tracks_only and _native_repeat and ClassDB.class_has_method(NATIVE_CLASS, &"samples")
 		if config.skip_settled_interp and ClassDB.class_has_method(NATIVE_CLASS, &"set_settled_skip"):
 			_native.set_settled_skip(true)
 		snapshot_batch = GSNetSnapshotBatch.create(config, self)
@@ -104,6 +109,10 @@ func is_native() -> bool:
 
 ## Records a snapshot's values for an entity.
 func push(net_id: int, tick: int, values: Dictionary) -> void:
+	if _native_only:
+		_native.push(net_id, tick, values)
+		_note_timeline(tick)
+		return
 	if not _tracks.has(net_id):
 		_tracks[net_id] = GSNetInterpTrack.new(net_id)
 
@@ -117,6 +126,11 @@ func push(net_id: int, tick: int, values: Dictionary) -> void:
 ## baseline holds (a read pushes whenever it carries anything to interpolate), without building them again from the behaviours. Returns the ids it could not repeat (no
 ## earlier sample, or one at this tick or later), for the caller to [method push] the ordinary way.
 func push_repeat_batch(net_ids: PackedInt64Array, tick: int) -> PackedInt64Array:
+	if _native_only:
+		var missed: PackedInt64Array = _native.push_repeat(net_ids, tick)
+		if missed.size() < net_ids.size():
+			_note_timeline(tick)
+		return missed
 	var left := PackedInt64Array()
 	var done := PackedInt64Array()
 	var now := Time.get_ticks_msec()
@@ -263,6 +277,8 @@ func _adapt() -> void:
 ##
 ## Empty when there is nothing to show yet (one sample cannot be interpolated). [param server_tick] is a float on purpose: a renderer runs between ticks (see [method GSNetManager.interpolate_frame]).
 func sample(net_id: int, server_tick: float) -> Dictionary:
+	if _native_only:
+		return _native.sample(net_id, float(server_tick) - delay_ticks(), config.max_extrapolation_sec * float(config.tick_rate))
 	var track: GSNetInterpTrack = _tracks.get(net_id)
 	if track == null or track.samples.is_empty():
 		return {}
@@ -310,31 +326,12 @@ func sample(net_id: int, server_tick: float) -> Dictionary:
 ## past the end, null when unknown or older than the buffer. A jump over [param cut] after it
 ## is a teleport. Counts nothing, never extrapolates (docs/prediction.md#bumping-a-remote).
 func value_at(net_id: int, property: StringName, render_tick: float, cut: float = 0.0) -> Variant:
+	if _native_only:
+		return _native.value_at(net_id, property, render_tick, cut)
 	var track: GSNetInterpTrack = _tracks.get(net_id)
 	if track == null or track.is_empty():
 		return null
-	var samples := track.samples
-	var last := samples.size() - 1
-	if render_tick >= float(samples[last]["tick"]):
-		return (samples[last]["values"] as Dictionary).get(property)
-	if render_tick < float(samples[0]["tick"]):
-		return null
-	for i in range(last):
-		var newer_tick := float(samples[i + 1]["tick"])
-		if render_tick > newer_tick:
-			continue
-		if cut > 0.0 and _jumps_after(samples, i, property, cut):
-			return null
-		var older_tick := float(samples[i]["tick"])
-		var a: Variant = (samples[i]["values"] as Dictionary).get(property)
-		var b: Variant = (samples[i + 1]["values"] as Dictionary).get(property)
-		if a == null or b == null:
-			return b if b != null else a
-		var alpha := 0.0 if newer_tick <= older_tick else (render_tick - older_tick) / (newer_tick - older_tick)
-		if (a is Vector3 and b is Vector3) or (a is Vector2 and b is Vector2) or (a is float and b is float):
-			return lerp(a, b, alpha)
-		return a if alpha < 0.5 else b
-	return (samples[last]["values"] as Dictionary).get(property)
+	return track.value_at(property, render_tick, cut)
 
 
 ## The two snapshot ticks [method value_at] blends at [param render_tick] (x older, y newer;
@@ -356,49 +353,12 @@ func bracket_at(render_tick: float) -> Vector2i:
 ## [param newer_tick] ([method bracket_at]) at [param render_tick]; null when either sample is
 ## missing, or with [param cut] past a teleport as in [method value_at]. Counts nothing.
 func value_between(net_id: int, property: StringName, older_tick: int, newer_tick: int, render_tick: float, cut: float = 0.0) -> Variant:
+	if _native_only:
+		return _native.value_between(net_id, property, older_tick, newer_tick, render_tick, cut)
 	var track: GSNetInterpTrack = _tracks.get(net_id)
 	if track == null or track.is_empty():
 		return null
-	var samples := track.samples
-	var i := -1
-	var j := -1
-	for k in range(samples.size()):
-		var t := int(samples[k]["tick"])
-		if t == older_tick:
-			i = k
-		if t == newer_tick:
-			j = k
-	if i < 0 or j < 0:
-		return null
-	# Only a jump inside the bracket cuts it: the server's rewind knows no teleport past the
-	# newer tick it was asked about, so one the client has since received must not null this.
-	if cut > 0.0 and _jumps_after(samples, i, property, cut, j):
-		return null
-	var a: Variant = (samples[i]["values"] as Dictionary).get(property)
-	var b: Variant = (samples[j]["values"] as Dictionary).get(property)
-	if a == null or b == null:
-		return b if b != null else a
-	var alpha := 0.0 if newer_tick <= older_tick else clampf((render_tick - float(older_tick)) / float(newer_tick - older_tick), 0.0, 1.0)
-	if (a is Vector3 and b is Vector3) or (a is Vector2 and b is Vector2) or (a is float and b is float):
-		return lerp(a, b, alpha)
-	return a if alpha < 0.5 else b
-
-
-## Whether [param property] moves further than [param cut] between any two neighbouring
-## samples from index [param from] on (to index [param to] when it is not -1): a teleport
-## [method value_at] does not reach across.
-static func _jumps_after(samples: Array, from: int, property: StringName, cut: float, to := -1) -> bool:
-	var before: Variant = null
-	var end := samples.size() if to < 0 else mini(to + 1, samples.size())
-	for j in range(from, end):
-		var now: Variant = (samples[j]["values"] as Dictionary).get(property)
-		if now == null:
-			continue
-		if before != null and ((now is Vector3 and before is Vector3) or (now is Vector2 and before is Vector2)):
-			if (now - before).length() > cut:
-				return true
-		before = now
-	return false
+	return track.value_between(property, older_tick, newer_tick, render_tick, cut)
 
 
 ## Continues past the newest sample, briefly.
@@ -757,12 +717,34 @@ func reset_counts() -> void:
 
 
 func track_count() -> int:
-	return _tracks.size()
+	return _native.track_count() if _native_only else _tracks.size()
+
+
+## The newest sample's tick for [param net_id], -1 when it has none.
+func newest_tick(net_id: int) -> int:
+	if _native_only:
+		return _native.newest_tick(net_id)
+	var track: GSNetInterpTrack = _tracks.get(net_id)
+	return -1 if track == null else track.newest_tick()
+
+
+## [param net_id]'s samples, oldest first: [code]{tick, values}[/code] dictionaries, empty without a track. With the GDScript
+## tracks these are the track's own (read only, and they also carry [code]at_ms[/code]); native-only they are fresh copies.
+func track_samples(net_id: int) -> Array:
+	if _native_only:
+		return _native.samples(net_id)
+	var track: GSNetInterpTrack = _tracks.get(net_id)
+	return [] if track == null else track.samples
+
+
+## Whether [param net_id] has a track with a sample in it.
+func has_track(net_id: int) -> bool:
+	return newest_tick(net_id) >= 0
 
 
 func describe() -> Dictionary:
 	return {
-		"tracks": _tracks.size(),
+		"tracks": track_count(),
 		"delay_snapshots": "%.2f" % _delay_snapshots,
 		"target_snapshots": "%.2f" % _target_snapshots,
 		"late_p95_ticks": "%.1f" % _late_ticks(),

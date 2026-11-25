@@ -83,3 +83,72 @@ func oldest_tick() -> int:
 
 func is_empty() -> bool:
 	return samples.is_empty()
+
+## [method GSNetInterpolator.value_at]'s answer from this track: [param property] at [param render_tick], the bracketing samples blended.
+func value_at(property: StringName, render_tick: float, cut: float = 0.0) -> Variant:
+	if samples.is_empty():
+		return null
+	var last := samples.size() - 1
+	if render_tick >= float(samples[last]["tick"]):
+		return (samples[last]["values"] as Dictionary).get(property)
+	if render_tick < float(samples[0]["tick"]):
+		return null
+	for i in range(last):
+		var newer_tick := float(samples[i + 1]["tick"])
+		if render_tick > newer_tick:
+			continue
+		if cut > 0.0 and _jumps_after(samples, i, property, cut):
+			return null
+		var older_tick := float(samples[i]["tick"])
+		var a: Variant = (samples[i]["values"] as Dictionary).get(property)
+		var b: Variant = (samples[i + 1]["values"] as Dictionary).get(property)
+		if a == null or b == null:
+			return b if b != null else a
+		var alpha := 0.0 if newer_tick <= older_tick else (render_tick - older_tick) / (newer_tick - older_tick)
+		if (a is Vector3 and b is Vector3) or (a is Vector2 and b is Vector2) or (a is float and b is float):
+			return lerp(a, b, alpha)
+		return a if alpha < 0.5 else b
+	return (samples[last]["values"] as Dictionary).get(property)
+
+## [method GSNetInterpolator.value_between]'s answer from this track.
+func value_between(property: StringName, older_tick: int, newer_tick: int, render_tick: float, cut: float = 0.0) -> Variant:
+	if samples.is_empty():
+		return null
+	var i := -1
+	var j := -1
+	for k in range(samples.size()):
+		var t := int(samples[k]["tick"])
+		if t == older_tick:
+			i = k
+		if t == newer_tick:
+			j = k
+	if i < 0 or j < 0:
+		return null
+	# Only a jump inside the bracket cuts it: the server's rewind knows no teleport past the
+	# newer tick it was asked about, so one the client has since received must not null this.
+	if cut > 0.0 and _jumps_after(samples, i, property, cut, j):
+		return null
+	var a: Variant = (samples[i]["values"] as Dictionary).get(property)
+	var b: Variant = (samples[j]["values"] as Dictionary).get(property)
+	if a == null or b == null:
+		return b if b != null else a
+	var alpha := 0.0 if newer_tick <= older_tick else clampf((render_tick - float(older_tick)) / float(newer_tick - older_tick), 0.0, 1.0)
+	if (a is Vector3 and b is Vector3) or (a is Vector2 and b is Vector2) or (a is float and b is float):
+		return lerp(a, b, alpha)
+	return a if alpha < 0.5 else b
+
+## Whether [param property] moves further than [param cut] between any two neighbouring
+## samples from index [param from] on (to index [param to] when it is not -1): a teleport
+## [method value_at] does not reach across.
+static func _jumps_after(rows: Array, from: int, property: StringName, cut: float, to := -1) -> bool:
+	var before: Variant = null
+	var end := rows.size() if to < 0 else mini(to + 1, rows.size())
+	for j in range(from, end):
+		var now: Variant = (rows[j]["values"] as Dictionary).get(property)
+		if now == null:
+			continue
+		if before != null and ((now is Vector3 and before is Vector3) or (now is Vector2 and before is Vector2)):
+			if (now - before).length() > cut:
+				return true
+		before = now
+	return false
