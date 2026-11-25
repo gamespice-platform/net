@@ -155,6 +155,8 @@ var _native: Object = null
 var _native_all := false
 ## Whether the library repeats a sample in place ([code]push_repeat[/code]); an older build is handed the values.
 var _native_repeat := false
+## The whole-snapshot native decode ([GSNetSnapshotBatch]), or null.
+var snapshot_batch: GSNetSnapshotBatch = null
 
 ## [method apply_frame] calls, for [member GSNetConfig.skip_settled_interp]; and the entities it left alone.
 var _frame: int = 0
@@ -171,6 +173,7 @@ func _init(p_config: GSNetConfig) -> void:
 		_native_repeat = ClassDB.class_has_method(NATIVE_CLASS, &"push_repeat")
 		if config.skip_settled_interp and ClassDB.class_has_method(NATIVE_CLASS, &"set_settled_skip"):
 			_native.set_settled_skip(true)
+		snapshot_batch = GSNetSnapshotBatch.create(config, self)
 
 
 ## Whether [method apply] draws in GameSpice Sim's library.
@@ -747,12 +750,16 @@ func _ease_resume(track: Track, values: Dictionary, render_tick: float) -> Dicti
 
 func forget(net_id: int) -> void:
 	_tracks.erase(net_id)
+	if snapshot_batch != null:
+		snapshot_batch.forget(net_id)
 	if _native != null:
 		_native.forget(net_id)
 
 
 func clear() -> void:
 	_tracks.clear()
+	if snapshot_batch != null:
+		snapshot_batch.clear()
 	if _native != null:
 		_native.clear()
 	_timeline.clear()
@@ -770,6 +777,8 @@ func prune(live_ids: PackedInt64Array) -> void:
 	for net_id in _tracks.keys():
 		if not live.has(net_id):
 			_tracks.erase(net_id)
+			if snapshot_batch != null:
+				snapshot_batch.forget(net_id)
 	if _native != null:
 		_native.prune(live_ids)
 

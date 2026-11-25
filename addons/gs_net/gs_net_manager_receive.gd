@@ -83,7 +83,16 @@ func _admit_snapshot_tick(tick: int) -> GSResult:
 
 ## Null when all entities were applied, else the result to return.
 func _apply_snapshot_entities(reader: GSNetReader, count: int, tick: int) -> GSResult:
-	for _i in range(count):
+	var batch: GSNetSnapshotBatch = interpolator.snapshot_batch if interpolator != null else null
+	var left := count
+	while left > 0:
+		# The native batch takes every entity it holds; one it does not is the script's, below.
+		if batch != null and not reader.exhausted:
+			left = batch.apply(reader, left, tick)
+			if left == 0:
+				break
+		left -= 1
+
 		var net_id := reader.read_uint(GSNetRegistry.ID_BITS)
 		var behaviour_count := reader.read_uint(6)
 
@@ -106,6 +115,8 @@ func _apply_snapshot_entities(reader: GSNetReader, count: int, tick: int) -> GSR
 		if not applied.ok:
 			stats.note_decode_failure()
 			return applied
+		if batch != null:
+			batch.hold(identity)
 	return null
 
 

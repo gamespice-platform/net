@@ -69,6 +69,10 @@ const MAX_SNAPSHOT_PARTS := 16
 ## either way; false is the per-entity path ([method GSNetManager._apply_entity]).
 @export var batch_unchanged: bool = true
 
+## Decode and apply a client's snapshot in one native call ([GSNetSnapshotBatch], gs-sim's [code]GSSimSnapshotBatch[/code]) for the remote entities whose work is data only; the rest go through [method GSNetManager._apply_entity].
+## Same properties, baselines, hook calls and samples either way; needs [member sim_codec] and [member sim_interp] and the library. [code]GS_NET_SNAPSHOT_BATCH=0[/code] turns it off in a process.
+@export var snapshot_batch: bool = true
+
 ## Draw remote entities in gs-sim's native interpolator ([code]GSSimInterpolator[/code]) when gs-sim is loaded: same values, cheaper
 ## per frame; [GSNetInterpolator]'s GDScript otherwise and always on the web. [code]GS_NET_SIM_INTERP=0[/code] or
 ## [code]--net-sim-interp=false[/code] turns it off.

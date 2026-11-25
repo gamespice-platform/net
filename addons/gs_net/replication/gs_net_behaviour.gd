@@ -112,6 +112,10 @@ func _read_for_send(property: StringName) -> Variant:
 	return value
 
 
+## Whether a client's native snapshot batch ([GSNetSnapshotBatch]) may set this behaviour's properties itself. A behaviour that overrides [method _net_write_property] must turn this off (a script cannot be asked whether it overrides), or the batch skips the override.
+var batch_writes := true
+
+
 ## Writes a property. Override to validate or to trigger side effects.
 func _net_write_property(property: StringName, value: Variant) -> void:
 	set(property, value)
