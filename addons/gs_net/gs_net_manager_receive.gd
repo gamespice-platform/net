@@ -246,15 +246,41 @@ func _apply_unchanged_tail(reader: GSNetReader, tick: int) -> GSResult:
 		cursor = first + length
 
 	# Read whole before applying any: a list that turns out truncated must change nothing.
+	var batch := config.batch_unchanged
+	var repeat := PackedInt64Array()
 	for net_id in ids:
 		var identity := registry.get_identity(net_id)
 		if identity == null:
+			continue
+		if batch and not identity.is_predicted():
+			# What [method _apply_entity] does for a still remote entity, minus the values it would build and push: those repeat the track's newest sample, below.
+			for behaviour in identity.behaviours:
+				behaviour.apply_unchanged(tick)
+			repeat.append(net_id)
 			continue
 		var applied := _apply_entity(identity, tick, null, identity.behaviours.size())
 		if not applied.ok:
 			return applied
 
+	if not repeat.is_empty():
+		for net_id in interpolator.push_repeat_batch(repeat, tick):
+			# No earlier sample to repeat: the ordinary push.
+			var values := _interpolated_baseline(registry.get_identity(net_id))
+			if not values.is_empty():
+				interpolator.push(net_id, tick, values)
+
 	return GSResult.success(ids.size())
+
+
+## What the server last SENT for [param identity]'s interpolated properties, as [method _apply_entity] hands the interpolator.
+func _interpolated_baseline(identity: GSNetIdentity) -> Dictionary:
+	var values := {}
+	for behaviour in identity.behaviours:
+		var baseline := behaviour._baseline
+		for declaration in behaviour.net_vars:
+			if declaration.interpolate and baseline.has(declaration.property):
+				values[declaration.property] = baseline[declaration.property]
+	return values
 
 
 func _reconcile(identity: GSNetIdentity, tick: int, values: Dictionary) -> void:

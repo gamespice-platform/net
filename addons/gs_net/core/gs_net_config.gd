@@ -64,6 +64,11 @@ const MAX_SNAPSHOT_PARTS := 16
 ## library). [code]GS_NET_SIM_CODEC=0[/code] or [code]--net-sim-codec=false[/code] turns it off.
 @export var sim_codec: bool = true
 
+## Apply a snapshot's unchanged-entity list in one pass on a client: each listed remote entity is told in its behaviours, and its interpolator track repeats
+## its newest sample ([method GSNetInterpolator.push_repeat_batch]) instead of rebuilding the same values from the behaviours and pushing them one by one. Same samples
+## either way; false is the per-entity path ([method GSNetManager._apply_entity]).
+@export var batch_unchanged: bool = true
+
 ## Draw remote entities in gs-sim's native interpolator ([code]GSSimInterpolator[/code]) when gs-sim is loaded: same values, cheaper
 ## per frame; [GSNetInterpolator]'s GDScript otherwise and always on the web. [code]GS_NET_SIM_INTERP=0[/code] or
 ## [code]--net-sim-interp=false[/code] turns it off.

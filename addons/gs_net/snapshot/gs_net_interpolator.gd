@@ -64,6 +64,23 @@ class Track extends RefCounted:
 		while samples.size() > TRACK_CAPACITY:
 			samples.pop_front()
 
+	## [method push] for an entity whose state did not change: a sample at [param tick] with the newest sample's values, copied. False, with nothing done, when there is no older sample to repeat (the caller pushes the values itself).
+	func push_repeat(tick: int, at_ms: int) -> bool:
+		if samples.is_empty():
+			return false
+		var newest: Dictionary = samples[samples.size() - 1]
+		if int(newest["tick"]) >= tick:
+			return false
+		drawn = {}
+		samples.append({
+			"tick": tick,
+			"at_ms": at_ms,
+			"values": (newest["values"] as Dictionary).duplicate(),
+		})
+		while samples.size() > TRACK_CAPACITY:
+			samples.pop_front()
+		return true
+
 	func newest_tick() -> int:
 		return int(samples[samples.size() - 1]["tick"]) if not samples.is_empty() else -1
 
@@ -136,6 +153,8 @@ var _native: Object = null
 ## Whether the library takes a whole frame in one call ([code]apply_all[/code]); an older build
 ## only has the per-entity [code]apply[/code].
 var _native_all := false
+## Whether the library repeats a sample in place ([code]push_repeat[/code]); an older build is handed the values.
+var _native_repeat := false
 
 ## [method apply_frame] calls, for [member GSNetConfig.skip_settled_interp]; and the entities it left alone.
 var _frame: int = 0
@@ -149,6 +168,7 @@ func _init(p_config: GSNetConfig) -> void:
 	if native_enabled and config.sim_interp and not OS.has_feature("web") and ClassDB.class_exists(NATIVE_CLASS):
 		_native = ClassDB.instantiate(NATIVE_CLASS)
 		_native_all = ClassDB.class_has_method(NATIVE_CLASS, &"apply_all")
+		_native_repeat = ClassDB.class_has_method(NATIVE_CLASS, &"push_repeat")
 		if config.skip_settled_interp and ClassDB.class_has_method(NATIVE_CLASS, &"set_settled_skip"):
 			_native.set_settled_skip(true)
 
@@ -166,6 +186,36 @@ func push(net_id: int, tick: int, values: Dictionary) -> void:
 	(_tracks[net_id] as Track).push(tick, values)
 	if _native != null:
 		_native.push(net_id, tick, values)
+	_note_timeline(tick)
+
+
+## [method push] at [param tick] for every entity in [param net_ids] whose state did not change: each gets a sample with its newest sample's values, which is what its
+## baseline holds (a read pushes whenever it carries anything to interpolate), without building them again from the behaviours. Returns the ids it could not repeat (no
+## earlier sample, or one at this tick or later), for the caller to [method push] the ordinary way.
+func push_repeat_batch(net_ids: PackedInt64Array, tick: int) -> PackedInt64Array:
+	var left := PackedInt64Array()
+	var done := PackedInt64Array()
+	var now := Time.get_ticks_msec()
+	for net_id in net_ids:
+		var track: Track = _tracks.get(net_id)
+		if track != null and track.push_repeat(tick, now):
+			done.append(net_id)
+		else:
+			left.append(net_id)
+	if done.is_empty():
+		return left
+	if _native != null:
+		var missed := done
+		if _native_repeat:
+			missed = _native.push_repeat(done, tick)
+		for net_id in missed:
+			var samples: Array[Dictionary] = (_tracks[net_id] as Track).samples
+			_native.push(net_id, tick, samples[samples.size() - 1]["values"])
+	_note_timeline(tick)
+	return left
+
+
+func _note_timeline(tick: int) -> void:
 	var at := _timeline.bsearch(tick)
 	if at >= _timeline.size() or _timeline[at] != tick:
 		_timeline.insert(at, tick)

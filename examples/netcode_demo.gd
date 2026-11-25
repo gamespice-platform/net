@@ -6,7 +6,7 @@ extends "selftest/netcode_unchanged_and_lossy_lead.gd"
 
 
 ## Every check this suite makes, the last one included. The section counter cannot see a check that never ran inside a section that had announced itself, so the total is compared with this. Raise it with every check added.
-const CHECKS := 644
+const CHECKS := 651
 
 
 func _ready() -> void:

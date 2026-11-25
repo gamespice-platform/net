@@ -648,7 +648,12 @@ func _apply_read(declaration: GSNetVar, value: Variant) -> void:
 ## What [method read_state] does for an entity a snapshot listed as unchanged: exactly a read of zero properties (see [code]docs/wire.md#unchanged-entities[/code]), so every consumer downstream sees what it saw for an empty body.
 func apply_unchanged(tick: int, rewind: bool = false) -> void:
 	_read_now.clear()
-	_finish_read(tick, rewind)
+	if rewind:
+		_finish_read(tick, true)
+		return
+	# [method _finish_read] without its rewind half: a still entity's snapshot, one call less per behaviour.
+	_read_tick = tick
+	_net_state_applied(tick)
 
 
 func _finish_read(tick: int, rewind: bool) -> void:
