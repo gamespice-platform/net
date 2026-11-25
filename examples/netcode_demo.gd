@@ -81,8 +81,9 @@ func _run() -> void:
 	)
 
 	_check(
-		"every check ran (%d of %d)" % [_passed + _failed + 1, CHECKS],
-		_passed + _failed + 1 == CHECKS
+		"every check ran (%d of %d, %d skipped without the native library)"
+			% [_passed + _failed + 1, CHECKS, _skipped_checks],
+		_passed + _failed + _skipped_checks + 1 == CHECKS
 	)
 
 	print("")

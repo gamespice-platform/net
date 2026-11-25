@@ -448,9 +448,7 @@ func _native_runs_match(loaded: bool) -> void:
 
 
 func _native_reads_match(loaded: bool) -> void:
-	# Reads in the library (GSNetConfig.native_reads): 1 reads each behaviour's values and its
-	# identity's frozen position without a GDScript call per behaviour, 0 is the GDScript
-	# fallback, 2 does both and counts every difference. All three send the same bytes.
+	# GSNetConfig.native_reads: 1 reads in the library, 0 is the GDScript fallback, 2 does both and counts differences; all send the same bytes.
 	# "computed" overrides _net_read_property, so the library reads it through GDScript in every mode.
 	var direct: Array[bool] = []
 	for probe: GSNetBehaviour in [Computed.new(), Counted.new(), Coded.new()]:

@@ -59,8 +59,16 @@ var _window_packets_sent: int = 0
 var _rtt_samples: Array[float] = []
 
 
+## Added to the clock the window is measured on, in ms: a test moves time forward by raising it instead of waiting.
+var clock_skew_ms: int = 0
+
+
+func _now_ms() -> int:
+	return Time.get_ticks_msec() + clock_skew_ms
+
+
 func _init() -> void:
-	_window_started_ms = Time.get_ticks_msec()
+	_window_started_ms = _now_ms()
 
 
 func note_sent(bytes: int, message_count: int = 1) -> void:
@@ -143,7 +151,7 @@ func roll() -> void:
 
 
 func _maybe_roll() -> void:
-	var now := Time.get_ticks_msec()
+	var now := _now_ms()
 	var elapsed := now - _window_started_ms
 
 	if elapsed < int(WINDOW_SEC * 1000.0):
@@ -213,7 +221,7 @@ func reset() -> void:
 	_window_bytes_sent = 0
 	_window_bytes_received = 0
 	_window_packets_sent = 0
-	_window_started_ms = Time.get_ticks_msec()
+	_window_started_ms = _now_ms()
 
 
 func describe() -> Dictionary:

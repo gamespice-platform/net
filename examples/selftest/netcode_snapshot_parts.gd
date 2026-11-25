@@ -688,10 +688,8 @@ func _threads_scenario(
 				c2.aim = Vector3(cos(float(tick) * 0.1 + i), 0.2, sin(float(tick) * 0.1)) * 3.0
 				c2.label = (tick / 4 + i) % 5
 
-		# The budget's window is a wall-clock second, which one run can cross at a different
-		# tick from another; hold it open and roll it every ten ticks instead.
-		# "held" leaves the accumulators where they are (a native core keeps them across ticks
-		# until for_peer asks) and reads them every tenth tick only.
+		# The budget's window is a wall-clock second, which one run can cross at a different tick from another; roll it every ten ticks instead.
+		# "held" leaves the accumulators where they are (a native core keeps them until for_peer asks) and reads them every tenth tick only.
 		var held := variant == "held"
 		for i in PEERS:
 			var w := host.budget.record(2 + i) if held else host.budget.for_peer(2 + i)

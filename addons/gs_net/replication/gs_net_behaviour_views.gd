@@ -8,12 +8,8 @@ extends "gs_net_behaviour_state.gd"
 var _native_core: Object = null
 
 
-## Resolves this peer's unconfirmed sends against the tick it has acknowledged. Called by
-## [GSNetManager] just before [method collect_dirty], not pushed to every behaviour on each ack (a
-## full registry sweep per ack).
-##
-## [param acked_ring] is the peer's record of every snapshot tick it acknowledged
-## ([method GSNetManager.acked_ring]): an unconfirmed send older than [param acked_tick] whose own tick
+## Resolves this peer's unconfirmed sends against the tick it has acknowledged. Called by [GSNetManager] just before [method collect_dirty], not pushed to every behaviour on each ack.
+## [param acked_ring] ([method GSNetManager.acked_ring]): an unconfirmed send older than [param acked_tick] whose own tick
 ## is in it was applied and is promoted, not resent. Empty: only [param acked_tick] itself counts.
 func sync_peer_acks(
 	peer_id: int,
@@ -32,11 +28,9 @@ func sync_peer_acks(
 	_sync_view(view, acked_tick, acked_ring)
 
 
-## [method sync_peer_acks] past its early-outs: [param acked_tick] is newer than the view's.
-##
-## A view is synced only when its entity is collected, so an entity interest thins out (far rings)
-## comes back with several acks gone by: without [param acked_ring] its sends older than the newest
-## ack all read as lost and went out again, more bytes than not thinning at all.
+## [method sync_peer_acks] past its early-outs: [param acked_tick] is newer than the view's. A view is synced only when its
+## entity is collected, so one interest thins out returns after several acks: without [param acked_ring] its older sends
+## all read as lost and went out again, more bytes than not thinning at all.
 func _sync_view(view: PeerView, acked_tick: int, acked_ring: PackedInt64Array = PackedInt64Array()) -> void:
 	view.last_ack = acked_tick
 

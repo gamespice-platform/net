@@ -1,12 +1,7 @@
 class_name GSNetSnapshotBatch
 extends RefCounted
-## GameSpice Sim's native snapshot batch ([code]GSSimSnapshotBatch[/code]): a client's whole-snapshot decode and push in one call, for the remote entities whose per-entity work is
-## data only. For each such entity the native side does what [method GSNetManager._apply_entity] does for a remote one: every behaviour's state decoded and written to its
-## properties and [code]_baseline[/code], its [code]_net_state_applied[/code] hook called, the interpolated values pushed to the track and to [code]GSSimInterpolator[/code].
-##
-## An entity it does not hold (not seen yet, predicted, or with a change handler, a script-read declaration or [member GSNetBehaviour.batch_writes] off) and any body it
-## cannot decode the script's way is left to the script with the reader back at that entity, so errors, logs and counters stay the script's. Optional like [GSNetSimCodec]:
-## without gs-sim, with [member GSNetConfig.snapshot_batch] off, or without its interpolator, the per-entity loop runs alone. docs/native.md.
+## GameSpice Sim's native snapshot batch ([code]GSSimSnapshotBatch[/code]): a client's whole-snapshot decode and push in one call, for remote entities whose per-entity work is data only. It does what [method GSNetManager._apply_entity] does for a remote one: decodes each behaviour's state into its properties and [code]_baseline[/code], calls [code]_net_state_applied[/code], and pushes the interpolated values to the track and to [code]GSSimInterpolator[/code].
+## An entity it does not hold (not seen yet, predicted, or with a change handler, a script-read declaration or [member GSNetBehaviour.batch_writes] off) and any body it cannot decode the script's way is left to the script, so errors, logs and counters stay the script's. Optional like [GSNetSimCodec]: without gs-sim, with [member GSNetConfig.snapshot_batch] off, or without its interpolator, the per-entity loop runs alone. docs/native.md.
 
 const CLASS := &"GSSimSnapshotBatch"
 

@@ -1,10 +1,7 @@
 extends Node
 
-## GSNetInterestGrid's script index against gs-sim's GSSimInterestGrid: same candidates in the same order over
-## seeded worlds (flat and 3D binning, negative coordinates, always-relevant entities), then a microbench of
-## _prepare plus one _candidates per observer. Without the native class it prints SKIPPED and exits 0
-## (exit 1 under GS_NATIVE_REQUIRED=1).
-## Run: [code]godot --headless --path . res://tools/interest_native_parity.tscn[/code]
+## GSNetInterestGrid's script index against gs-sim's GSSimInterestGrid: same candidates in the same order over seeded worlds (flat and 3D binning, negative coordinates, always-relevant entities), then a microbench of _prepare plus one _candidates per observer.
+## Without the native class it prints SKIPPED and exits 0 (exit 1 under GS_NATIVE_REQUIRED=1). Run: [code]godot --headless --path . res://tools/interest_native_parity.tscn[/code]
 
 const ENTITIES := 2000
 const OBSERVERS := 32

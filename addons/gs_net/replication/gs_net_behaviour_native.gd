@@ -29,10 +29,9 @@ const _NATIVE_READ_HOOKS: Array[StringName] = [&"_net_read_property", &"_native_
 static var _direct_reads_by_script: Dictionary = {}
 
 
-## Whether the native core may read this behaviour's values without calling [method GSNetBehaviour._native_values]
-## ([member GSNetConfig.native_reads]): only when every script from this one down to [GSNetBehaviour] is GDScript
-## and none overrides a read hook. [method Script.get_script_method_list] lists a method once per script in the
-## chain that defines it, so an override shows as one more than [GSNetBehaviour]'s own.
+## Whether the native core may read this behaviour's values without [method GSNetBehaviour._native_values]
+## ([member GSNetConfig.native_reads]): only when every script down to [GSNetBehaviour] is GDScript and none overrides a read
+## hook ([method Script.get_script_method_list] lists a method once per defining script, so an override shows as one more).
 func _native_direct_reads() -> bool:
 	var script := get_script() as Script
 	if script == null:

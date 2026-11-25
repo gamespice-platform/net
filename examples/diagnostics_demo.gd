@@ -200,7 +200,7 @@ func _section_rates() -> void:
 	_check("rates are still zero inside the window", s.bytes_sent_per_sec == 0.0,
 		"%.1f" % s.bytes_sent_per_sec)
 
-	await _wait(1.1)
+	s.clock_skew_ms += 1100
 	s.note_sent(1000)
 	_check("traffic closes the window", s.bytes_sent_per_sec > 0.0,
 		"%.0f B/s" % s.bytes_sent_per_sec)
@@ -209,11 +209,11 @@ func _section_rates() -> void:
 	# reporting the throughput it had when it stalled is wrong at exactly the moment someone is reading
 	# it to find out why.
 	var was := s.bytes_sent_per_sec
-	await _wait(1.1)
+	s.clock_skew_ms += 1100
 	s.roll()
 	_check("silence rolls the rate down", s.bytes_sent_per_sec < was,
 		"%.0f -> %.0f B/s" % [was, s.bytes_sent_per_sec])
-	await _wait(1.1)
+	s.clock_skew_ms += 1100
 	s.roll()
 	_check("and to zero", s.bytes_sent_per_sec == 0.0, "%.1f" % s.bytes_sent_per_sec)
 
@@ -375,10 +375,6 @@ func _section_snapshot_isolation() -> void:
 
 	_line("")
 	_sections_finished += 1
-
-
-func _wait(seconds: float) -> void:
-	await get_tree().create_timer(seconds).timeout
 
 
 func _finish(code: int = 0) -> void:

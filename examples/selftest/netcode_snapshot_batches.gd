@@ -2,6 +2,9 @@ extends "netcode_unchanged_and_lossy_lead.gd"
 
 ## Sections of netcode_demo.gd: the client snapshot batches, each against the script path.
 
+## Checks a section left out because the native library is not loaded; the demo counts them so the total still adds up.
+var _skipped_checks := 0
+
 
 func _test_snapshot_batches() -> void:
 	_unchanged_batch_parity()
@@ -57,6 +60,7 @@ func _unchanged_batch_parity() -> void:
 			var label := "%s interpolator, batch %s" % ["native" if native else "script", batch]
 			if native and not got["native"]:
 				print("  (native interpolator not available, %s skipped)" % label)
+				_skipped_checks += 1
 				continue
 			_check("unchanged batch parity: %s draws what one push each draws" % label,
 				got["samples"] == reference["samples"] and got["applied"] == reference["applied"]
@@ -112,6 +116,7 @@ func _snapshot_batch_parity() -> void:
 	var got := _snapshot_batch_run(true)
 	if int(got["held"]) == 0 and not ClassDB.class_exists(GSNetSnapshotBatch.CLASS):
 		print("  (native snapshot batch not available, parity skipped)")
+		_skipped_checks += 6
 		return
 	_check("snapshot batch parity: the batch holds the entities (%d of 12)" % got["held"],
 		int(got["held"]) == 12 and int(reference["held"]) == 0)

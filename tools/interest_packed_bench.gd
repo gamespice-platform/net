@@ -1,10 +1,7 @@
 extends Node
 
-## GSNetInterestDistance over a frozen world with and without the packed per-snapshot copies
-## ([member GSNetInterest.use_packed]): the same relevant set in the same order over seeded worlds (owners,
-## always-relevant, tagged entities), then the cost of index_snapshot plus one relevance per observer.
-## Exit 1 on any difference or when the packed path is not the one measured; the timings are printed, not asserted
-## (budgets belong to the perf system). Run: [code]godot --headless --path . res://tools/interest_packed_bench.tscn[/code]
+## GSNetInterestDistance over a frozen world with and without the packed per-snapshot copies ([member GSNetInterest.use_packed]): the same relevant set in the same order over seeded worlds (owners, always-relevant, tagged entities), then the cost of index_snapshot plus one relevance per observer.
+## Exit 1 on any difference or when the packed path is not the one measured; timings are printed, not asserted. Run: [code]godot --headless --path . res://tools/interest_packed_bench.tscn[/code]
 
 const ENTITIES := 2000
 const OBSERVERS := 32

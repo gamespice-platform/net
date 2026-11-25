@@ -51,12 +51,8 @@ const MAX_SNAPSHOT_PARTS := 16
 ## Environment [code]GS_NET_NATIVE_INTEREST=0[/code] or [code]--net-native-interest=false[/code] turns it off.
 @export var native_interest: bool = true
 
-## How the native core reads each behaviour's values when a snapshot opens: [code]1[/code] reads the
-## properties in the library (no GDScript call per behaviour), [code]0[/code] calls
-## [code]GSNetBehaviour._native_values[/code] for each as before (the fallback), [code]2[/code] does both
-## and compares: a difference is counted ([code]read_mismatches[/code] in [code]describe()[/code]), logged
-## once, and GDScript's values are sent. The same bytes either way. Environment [code]GS_NET_NATIVE_READS[/code],
-## command line [code]--net-native-reads[/code].
+## How the native core reads each behaviour's values when a snapshot opens: [code]1[/code] in the library, [code]0[/code] through [code]GSNetBehaviour._native_values[/code], [code]2[/code] both, counting a difference as [code]read_mismatches[/code] in [code]describe()[/code] and sending GDScript's values. Same bytes either way.
+## Environment [code]GS_NET_NATIVE_READS[/code], command line [code]--net-native-reads[/code].
 @export_range(0, 2) var native_reads: int = 1
 
 ## Encode and decode snapshot states in GameSpice Sim's native codec ([GSNetSimCodec]) when GameSpice Sim is loaded: same bytes and values, cheaper;

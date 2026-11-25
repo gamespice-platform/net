@@ -175,10 +175,9 @@ var _ph_begin_usec: int = 0
 ## peer_id -> newest snapshot tick they have acknowledged, on the server.
 var _acks: Dictionary = {}
 
-## peer_id -> every snapshot tick it has acknowledged lately, on the server: a PackedInt64Array
-## holding tick t at t % size (-1 empty), sized from the ack window ([method _acked_ring_size]).
-## Lets a view synced only now (its entity thinned out of the snapshots between) promote a send
-## whose own tick was acked instead of resending it. See [method GSNetManager.acked_ring].
+## peer_id -> every snapshot tick it has acknowledged lately, on the server: a PackedInt64Array holding tick t at
+## t % size (-1 empty), sized from the ack window ([method _acked_ring_size]). See [method GSNetManager.acked_ring]:
+## a view synced late promotes a send whose own tick was acked instead of resending it.
 var _acked_rings: Dictionary = {}
 
 ## peer_id -> whether that peer has ever acknowledged anything. Acknowledgements are optional (the
@@ -301,10 +300,9 @@ func _delayed_send(peer_id: int, payload: PackedByteArray, delivery: GSNetMessag
 			_send_fn.call(peer_id, payload, delivery))
 
 
-## The ticks [param peer_id] has acknowledged lately: tick t sits at [code]t % size()[/code], an
-## empty slot is -1, and an empty array means none recorded. Server side. Every view sync reads it
-## ([method GSNetBehaviour.sync_peer_acks]) so that a send is promoted when its own snapshot was
-## acked, not only when it is the newest ack: a view is synced only when its entity is collected.
+## The ticks [param peer_id] has acknowledged lately: tick t sits at [code]t % size()[/code], an empty slot is -1, an empty
+## array means none recorded. Server side. [method GSNetBehaviour.sync_peer_acks] reads it so a send is promoted when its
+## own snapshot was acked, not only when it is the newest ack: a view is synced only when its entity is collected.
 func acked_ring(peer_id: int) -> PackedInt64Array:
 	var ring: Variant = _acked_rings.get(peer_id)
 	return ring if ring != null else PackedInt64Array()
