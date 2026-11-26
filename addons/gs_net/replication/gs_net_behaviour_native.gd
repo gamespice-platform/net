@@ -48,6 +48,38 @@ func _native_direct_reads() -> bool:
 	return ok
 
 
+## Whether anything listens to [method GSNetBehaviour._net_state_applied]: a script down to [GSNetBehaviour] overrides it, or
+## one is not a GDScript (it cannot be told). False lets a snapshot apply skip the call to the inherited no-op; worked out once.
+func listens_state_applied() -> bool:
+	if _listens_state_applied < 0:
+		_listens_state_applied = 1 if _overrides_state_applied() else 0
+	return _listens_state_applied == 1
+
+
+## -1 until [method listens_state_applied] works it out.
+var _listens_state_applied := -1
+
+
+func _overrides_state_applied() -> bool:
+	var script := get_script() as Script
+	if script == null:
+		return true
+	var base := script
+	while base != null and base.get_global_name() != &"GSNetBehaviour":
+		if not base is GDScript:
+			return true
+		base = base.get_base_script()
+	return base == null or _method_count(script, &"_net_state_applied") > _method_count(base, &"_net_state_applied")
+
+
+static func _method_count(script: Script, method_name: StringName) -> int:
+	var count := 0
+	for method: Dictionary in script.get_script_method_list():
+		if StringName(method["name"]) == method_name:
+			count += 1
+	return count
+
+
 static func _native_hook_counts(script: Script) -> Array[int]:
 	var counts: Array[int] = []
 	counts.resize(_NATIVE_READ_HOOKS.size())

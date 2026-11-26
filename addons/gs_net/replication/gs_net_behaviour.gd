@@ -653,7 +653,8 @@ func apply_unchanged(tick: int, rewind: bool = false) -> void:
 		return
 	# [method _finish_read] without its rewind half: a still entity's snapshot, one call less per behaviour.
 	_read_tick = tick
-	_net_state_applied(tick)
+	if listens_state_applied():
+		_net_state_applied(tick)
 
 
 func _finish_read(tick: int, rewind: bool) -> void:
@@ -665,7 +666,8 @@ func _finish_read(tick: int, rewind: bool) -> void:
 				_net_write_property(property, _baseline[property])
 
 	_read_tick = tick
-	_net_state_applied(tick)
+	if listens_state_applied():
+		_net_state_applied(tick)
 
 
 ## The server's whole state for this behaviour as of the snapshot just read, on a receiving peer: what

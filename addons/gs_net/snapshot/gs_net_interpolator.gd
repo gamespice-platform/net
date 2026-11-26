@@ -107,6 +107,32 @@ func is_native() -> bool:
 	return _native != null
 
 
+## Hands [param behaviour]'s [method GSNetBehaviour._net_interpolated] to GameSpice Sim's library, for a hook that only copies
+## interpolated values: after each frame's writes, every [param pairs] entry (behaviour property -> state property) is copied onto
+## the object reached from [param node] through the [param chain] properties (empty: the node itself), then
+## [code]node.global_position[/code] is set to that object's [param position] property, all inside [method apply_frame]'s one call
+## and without calling the hook. Nothing happens once [param node] is freed. False (the hook stays) without a library that can.
+## Never call it from inside the hook (the library is mid-apply there and panics on re-entry): defer it.
+func bind_mirror(behaviour: GSNetBehaviour, node: Node3D, chain: PackedStringArray, pairs: Dictionary, position: StringName) -> bool:
+	if _native == null or not ClassDB.class_has_method(NATIVE_CLASS, &"bind_mirror"):
+		return false
+	_native.bind_mirror(behaviour, node, chain, pairs, position)
+	return true
+
+
+## Back to [method GSNetBehaviour._net_interpolated] for [param behaviour].
+func unbind_mirror(behaviour: GSNetBehaviour) -> void:
+	if _native != null and ClassDB.class_has_method(NATIVE_CLASS, &"unbind_mirror"):
+		_native.unbind_mirror(behaviour)
+
+
+## Behaviours [method bind_mirror] bound (0 without the library).
+func mirror_count() -> int:
+	if _native == null or not ClassDB.class_has_method(NATIVE_CLASS, &"mirror_count"):
+		return 0
+	return _native.mirror_count()
+
+
 ## Records a snapshot's values for an entity.
 func push(net_id: int, tick: int, values: Dictionary) -> void:
 	if _native_only:

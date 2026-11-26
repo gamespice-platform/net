@@ -69,8 +69,8 @@ func hold(interpolator: GSNetInterpolator, identity: GSNetIdentity) -> void:
 		if not behaviour.batch_writes:
 			_never[net_id] = true
 			return
-		# Always hooked: a script's override cannot be told from the inherited no-op (a script's method list holds both).
-		parts.append([behaviour, codec, names, flags, true])
+		# Hooked only when the script overrides the inherited no-op ([method GSNetBehaviour.listens_state_applied]).
+		parts.append([behaviour, codec, names, flags, behaviour.listens_state_applied()])
 
 	if not _native.register(net_id, parts, track):
 		_never[net_id] = true
