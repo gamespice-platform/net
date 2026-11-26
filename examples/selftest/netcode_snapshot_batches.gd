@@ -19,6 +19,9 @@ func _unchanged_batch_run(batch: bool, native: bool) -> Dictionary:
 	var fresh := rig.fresh
 	fresh.config.batch_unchanged = batch
 	fresh.config.sim_interp = native
+	# The adaptive buffer sizes from wall-clock arrival gaps (GSNetInterpolator.note_arrival): a
+	# hitch between two deliveries on a busy box moved one run's render tick, not its tracks.
+	fresh.config.adaptive_interpolation = false
 	fresh.interpolator = GSNetInterpolator.new(fresh.config)
 	for i in ENTITIES:
 		rig.on_server[i].position = Vector3(1.0 + i, 0, 0)
@@ -31,7 +34,7 @@ func _unchanged_batch_run(batch: bool, native: bool) -> Dictionary:
 	rig.on_server[5].position = Vector3(-9, 2, 0)
 	rig.deliver(9)
 	rig.deliver(12)
-	var out := {"native": fresh.interpolator.is_native(), "samples": [], "applied": [], "last": []}
+	var out := {"native": fresh.interpolator.is_native(), "delay": fresh.interpolator.delay_ticks(), "samples": [], "applied": [], "last": []}
 	for i in ENTITIES:
 		var net_id: int = rig.on_fresh[i].identity.net_id
 		for t in [3.0, 4.5, 6.0, 7.5, 9.0, 10.5, 12.0, 13.0]:
@@ -64,7 +67,7 @@ func _unchanged_batch_parity() -> void:
 				continue
 			_check("unchanged batch parity: %s draws what one push each draws" % label,
 				got["samples"] == reference["samples"] and got["applied"] == reference["applied"]
-					and got["last"] == reference["last"])
+					and got["last"] == reference["last"] and got["delay"] == reference["delay"])
 
 
 ## What one run of [method _snapshot_batch_parity] leaves behind.
@@ -75,6 +78,9 @@ func _snapshot_batch_run(batch: bool, native := true, tracks_only := true) -> Di
 	fresh.config.snapshot_batch = batch
 	fresh.config.sim_interp = native
 	fresh.config.sim_interp_tracks_only = tracks_only
+	# The adaptive buffer sizes from wall-clock arrival gaps (GSNetInterpolator.note_arrival): a
+	# hitch between two deliveries on a busy box moved one run's render tick, not its tracks.
+	fresh.config.adaptive_interpolation = false
 	fresh.interpolator = GSNetInterpolator.new(fresh.config)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242
@@ -90,7 +96,7 @@ func _snapshot_batch_run(batch: bool, native := true, tracks_only := true) -> Di
 			rig.deliver(tick - 3)
 		tick += 3
 	var held: int = fresh.interpolator.snapshot_batch.size() if fresh.interpolator.snapshot_batch != null else 0
-	var out := {"held": held, "native_only": fresh.interpolator._native_only, "samples": [], "applied": [], "last": [], "baseline": [], "newest": [], "reads": [], "track": []}
+	var out := {"delay": fresh.interpolator.delay_ticks(), "held": held, "native_only": fresh.interpolator._native_only, "samples": [], "applied": [], "last": [], "baseline": [], "newest": [], "reads": [], "track": []}
 	for i in ENTITIES:
 		var behaviour = rig.on_fresh[i]
 		var net_id: int = behaviour.identity.net_id
@@ -129,18 +135,18 @@ func _snapshot_batch_parity() -> void:
 	var got := _snapshot_batch_run(true)
 	if int(got["held"]) == 0 and not ClassDB.class_exists(GSNetSnapshotBatch.CLASS):
 		print("  (native snapshot batch not available, parity skipped)")
-		# 16 here, and the rig check of each of the two runs below that never start.
-		_skipped_checks += 18
+		# 18 here, and the rig check of each of the two runs below that never start.
+		_skipped_checks += 20
 		return
 	_check("snapshot batch parity: the batch holds the entities (%d of 12)" % got["held"],
 		int(got["held"]) == 12 and int(reference["held"]) == 0)
-	for key in ["samples", "applied", "last", "baseline", "newest", "reads", "track"]:
+	for key in ["delay", "samples", "applied", "last", "baseline", "newest", "reads", "track"]:
 		_check("snapshot batch parity: %s match the script path" % key, got[key] == reference[key])
 	# The library holding the only tracks against the whole script path (no native interpolator)
 	# and against the native one mirrored by GDScript tracks.
 	var script_only := _snapshot_batch_run(false, false)
 	var mirrored := _snapshot_batch_run(true, true, false)
 	_check("native-only tracks: the batch run keeps no GDScript track", bool(got["native_only"]) and not bool(mirrored["native_only"]))
-	for key in ["samples", "applied", "last", "baseline", "newest", "reads", "track"]:
+	for key in ["delay", "samples", "applied", "last", "baseline", "newest", "reads", "track"]:
 		_check("native-only tracks: %s match the script interpolator and the mirrored one" % key,
 			got[key] == script_only[key] and got[key] == mirrored[key])
