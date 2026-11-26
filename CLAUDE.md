@@ -65,7 +65,7 @@ A game should never need to fork gs-net. Family rules: [extension-points.md](../
 | Where bytes go | `GSNetManager.send_fn` | Transport-agnostic by construction |
 | Reading a computed property | `_net_read_property` / `_net_write_property` | Replicate something you do not store |
 | Extra rewind state | `_net_record_history()` on a behaviour | Crouch flags, animation frames |
-| Drawing interpolated state | `_net_interpolated(render_tick)` | Not `_net_state_applied`, which fires per snapshot |
+| Drawing interpolated state | `_net_interpolated(render_tick)` | Not `_net_state_applied`, which fires per changed snapshot |
 
 `GSNetInterest`: `_is_relevant` is the whole interface for most strategies; `_candidates` is for spatial indexes that answer in bulk; `_score` feeds prioritisation. `netcode_demo`'s `TagInterest` is a dozen lines.
 
@@ -121,7 +121,7 @@ Short forms; the reasoning is in the linked file.
 - A required type the peer lacks raises `peer_schema_refused`; **the host must drop the peer** (GameSpice Net owns no socket). [wire](docs/wire.md#the-schema-exchange)
 - Godot's ENet sends UNRELIABLE as unsequenced: nothing sent unreliable may assume order. [wire](docs/wire.md#unreliable-means-unordered)
 - A snapshot over `config.mtu` goes out in parts, each applying alone; a client acks a tick only when every part is in, and a part of an older tick than one already read is superseded. [wire](docs/wire.md#snapshot-parts)
-- An entity with nothing dirty is listed by id in the part's tail, not written, only to a client whose schema says `FEATURE_UNCHANGED_RUNS`; the client applies it as an empty body, so `_net_state_applied` still fires per snapshot. A snapshot goes out every snapshot tick, even empty. [wire](docs/wire.md#unchanged-entities)
+- An entity with nothing dirty is listed by id in the part's tail, not written, only to a client whose schema says `FEATURE_UNCHANGED_RUNS`; the client applies it as an empty body. `_net_state_applied` fires only when a decoded value changed (`GSNetConfig.skip_unchanged_state_applied`, default on), every snapshot for a predicted entity or one with `GSNetBehaviour.state_applied_every_snapshot`. A snapshot goes out every snapshot tick, even empty. [wire](docs/wire.md#unchanged-entities)
 - The input lead rides at the end of every snapshot part, after a (possibly empty) unchanged tail, only to a peer naming `FEATURE_INPUT_LEAD`; the server measures arrival in `Buffer.push_batch`, on a packet's newest input only (a resend first seen after a lost packet is late by the loss, and the clock would jump for it). The client-to-server packet is untouched (`ACK_BYTES`). [wire](docs/wire.md#the-input-lead)
 - Clients send inputs, never state; `_sanitise()` runs on the server after decode; message direction is checked against the transport's sender. [security](docs/security.md)
 

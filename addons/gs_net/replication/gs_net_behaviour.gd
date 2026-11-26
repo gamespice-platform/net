@@ -603,6 +603,7 @@ func read_state(reader: GSNetReader, tick: int, rewind: bool = false) -> GSResul
 		return GSResult.fail(GSError.CODE_PARSE, "Truncated state header.")
 
 	_read_now.clear()
+	_read_changed = false
 
 	for _i in range(count):
 		var index := reader.read_uint(6)
@@ -633,6 +634,10 @@ func read_state(reader: GSNetReader, tick: int, rewind: bool = false) -> GSResul
 
 func _apply_read(declaration: GSNetVar, value: Variant) -> void:
 	var property := declaration.property
+	if not _read_changed:
+		# Type first: [code]==[/code] across types is a runtime error (gdscript-hazards.md).
+		var old: Variant = _baseline.get(property)
+		_read_changed = not _baseline.has(property) or typeof(old) != typeof(value) or old != value
 	if declaration.change_handler.is_valid():
 		var previous: Variant = _baseline.get(property)
 		_net_write_property(property, value)
@@ -653,7 +658,8 @@ func apply_unchanged(tick: int, rewind: bool = false) -> void:
 		return
 	# [method _finish_read] without its rewind half: a still entity's snapshot, one call less per behaviour.
 	_read_tick = tick
-	if listens_state_applied():
+	_read_changed = false
+	if _calls_state_applied(false):
 		_net_state_applied(tick)
 
 
@@ -666,7 +672,9 @@ func _finish_read(tick: int, rewind: bool) -> void:
 				_net_write_property(property, _baseline[property])
 
 	_read_tick = tick
-	if listens_state_applied():
+	var calls := _calls_state_applied(rewind)
+	_read_changed = false
+	if calls:
 		_net_state_applied(tick)
 
 

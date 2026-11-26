@@ -69,6 +69,11 @@ const MAX_SNAPSHOT_PARTS := 16
 ## Same properties, baselines, hook calls and samples either way; needs [member sim_codec] and [member sim_interp] and the library.
 @export var snapshot_batch: bool = true
 
+## On a client, run [method GSNetBehaviour._net_state_applied] only for a behaviour whose read changed a value (one not in its baseline, of another type, or unequal), or that sets
+## [member GSNetBehaviour.state_applied_every_snapshot]; a predicted entity's rewind always runs it. An entity the snapshot repeats unchanged costs no hook call, natively
+## ([GSNetSnapshotBatch]) or in GDScript. Same final state for a hook that only copies the replicated values onto the game; false calls it on every snapshot, as before API 26.
+@export var skip_unchanged_state_applied: bool = true
+
 ## Draw remote entities in gs-sim's native interpolator ([code]GSSimInterpolator[/code]) when gs-sim is loaded: same values, cheaper
 ## per frame; [GSNetInterpolator]'s GDScript otherwise and always on the web. [code]GS_NET_SIM_INTERP=0[/code] or
 ## [code]--net-sim-interp=false[/code] turns it off.

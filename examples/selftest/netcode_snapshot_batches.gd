@@ -9,6 +9,7 @@ var _skipped_checks := 0
 func _test_snapshot_batches() -> void:
 	_unchanged_batch_parity()
 	_snapshot_batch_parity()
+	_hook_skip_parity()
 
 
 ## What one run of [method _unchanged_batch_parity] leaves behind: the interpolator's answer for each
@@ -150,3 +151,76 @@ func _snapshot_batch_parity() -> void:
 	for key in ["delay", "samples", "applied", "last", "baseline", "newest", "reads", "track"]:
 		_check("native-only tracks: %s match the script interpolator and the mirrored one" % key,
 			got[key] == script_only[key] and got[key] == mirrored[key])
+
+
+## What one run of [method _hook_skip_parity] leaves behind: the client's state, the game's own copy of it, and how often the hook ran.
+func _hook_skip_run(skip: bool, batch: bool, every: bool) -> Dictionary:
+	const ENTITIES := 10
+	var rig := _unchanged_rig(ENTITIES)
+	var fresh := rig.fresh
+	fresh.config.skip_unchanged_state_applied = skip
+	fresh.config.snapshot_batch = batch
+	fresh.config.sim_interp = batch
+	fresh.config.adaptive_interpolation = false
+	fresh.interpolator = GSNetInterpolator.new(fresh.config)
+	for behaviour in rig.on_fresh:
+		# A game's hook: copy the replicated values into a simulation of its own.
+		behaviour.state_applied_every_snapshot = every
+		behaviour.keeps_own_state = true
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 777
+	var tick := 3
+	for round_index in 15:
+		for i in ENTITIES:
+			# A third move each snapshot; every fourth snapshot nothing moves (the unchanged tail alone).
+			# The last moves one at least, for last_changed.
+			if round_index == 0 or (round_index == 14 and i == 0) or (round_index % 4 != 3 and rng.randf() < 0.33):
+				rig.on_server[i].position = Vector3(rng.randf_range(-40, 40), 0, rng.randf_range(-40, 40))
+				rig.on_server[i].velocity = Vector3(rng.randf_range(-3, 3), 0, 0)
+		rig.deliver(tick)
+		tick += 3
+	var snapshot_batch := fresh.interpolator.snapshot_batch
+	var out := {
+		"held": snapshot_batch.size() if snapshot_batch != null else 0,
+		"skipped": snapshot_batch.hooks_skipped() if snapshot_batch != null else 0,
+		"changed": snapshot_batch.last_changed().size() if snapshot_batch != null else 0,
+		"calls": 0, "state": [],
+	}
+	for behaviour in rig.on_fresh:
+		out["calls"] = int(out["calls"]) + int(behaviour.applied)
+		(out["state"] as Array).append([behaviour.position, behaviour.velocity, behaviour._sim_position,
+			behaviour._sim_velocity, behaviour._baseline.duplicate(), behaviour._read_tick,
+			fresh.interpolator.sample(behaviour.identity.net_id, 30.0)])
+	rig.host.stop()
+	rig.fresh.stop()
+	rig.legacy.stop()
+	for m in [rig.host, rig.fresh, rig.legacy]:
+		remove_child(m)
+		(m as GSNetManager).free()
+	return out
+
+
+## [b]Skipping [code]_net_state_applied[/code] for an unchanged behaviour changes no state.[/b]
+## [member GSNetConfig.skip_unchanged_state_applied] on and off, in the script path and the native
+## batch: the same properties, the hook's own copy, baselines and samples, with fewer hook calls; a
+## behaviour with [member GSNetBehaviour.state_applied_every_snapshot] keeps every call.
+func _hook_skip_parity() -> void:
+	for batch in [false, true]:
+		var label := "native batch" if batch else "script path"
+		var off := _hook_skip_run(false, batch, false)
+		var on := _hook_skip_run(true, batch, false)
+		var every := _hook_skip_run(true, batch, true)
+		_check("hook skip parity (%s): the same final state with the skip on and off" % label,
+			on["state"] == off["state"] and every["state"] == off["state"])
+		_check("hook skip (%s): fewer hook calls with the skip on (%d of %d)" % [label, on["calls"], off["calls"]],
+			int(on["calls"]) > 0 and int(on["calls"]) < int(off["calls"]))
+		_check("hook skip (%s): the opt-in keeps a call per snapshot (%d of %d)" % [label, every["calls"], off["calls"]],
+			every["calls"] == off["calls"])
+		if not batch:
+			continue
+		if int(on["held"]) == 0 and not ClassDB.class_exists(GSNetSnapshotBatch.CLASS):
+			print("  (native snapshot batch not available, its skip count unchecked)")
+			_skipped_checks += 1
+			continue
+		_check("hook skip: the native batch saved calls (%d) and listed what changed (%d), none without the skip" % [on["skipped"], on["changed"]],
+			int(on["skipped"]) > 0 and int(on["changed"]) > 0 and int(off["skipped"]) == 0 and int(every["skipped"]) == 0)

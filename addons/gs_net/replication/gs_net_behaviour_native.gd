@@ -56,6 +56,16 @@ func listens_state_applied() -> bool:
 	return _listens_state_applied == 1
 
 
+## Whether the read just finished runs [method _net_state_applied]: it is overridden, and a rewind, a changed value, [member state_applied_every_snapshot] or
+## [member GSNetConfig.skip_unchanged_state_applied] off asks for it.
+func _calls_state_applied(rewind: bool) -> bool:
+	if not listens_state_applied():
+		return false
+	if rewind or _read_changed or state_applied_every_snapshot:
+		return true
+	return _config == null or not _config.skip_unchanged_state_applied
+
+
 ## -1 until [method listens_state_applied] works it out.
 var _listens_state_applied := -1
 

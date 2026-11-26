@@ -115,6 +115,7 @@ static func read_state(
 				return GSResult.fail(GSError.CODE_PARSE, "Truncated state header.")
 			count = read + int(out[2])
 			behaviour._read_now.clear()
+			behaviour._read_changed = false
 
 		for i in range(read):
 			behaviour._apply_read(net_vars[int(out[4 + 2 * i])], out[5 + 2 * i])

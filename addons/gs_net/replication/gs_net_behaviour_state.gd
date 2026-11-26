@@ -33,6 +33,13 @@ var _registered: bool = false
 ## Whether a client's native snapshot batch ([GSNetSnapshotBatch]) may set this behaviour's properties itself. A behaviour that overrides [method _net_write_property] must turn this off (a script cannot be asked whether it overrides), or the batch skips the override.
 var batch_writes := true
 
+## Run [method _net_state_applied] on every snapshot this behaviour is in, even one that changed none of its values. Off: with [member GSNetConfig.skip_unchanged_state_applied]
+## the hook runs only when a value changed (or on a predicted rewind). Turn it on for a hook that counts snapshots or keeps a timer of its own.
+var state_applied_every_snapshot := false
+
+## Whether the read in progress changed a value ([method GSNetBehaviour._apply_read]); [method GSNetBehaviour._finish_read] resets it.
+var _read_changed := false
+
 ## GameSpice Sim's snapshot codec for this behaviour ([GSNetSimCodec]), or null for the GDScript one.
 var _sim_codec: Object = null
 var _config: GSNetConfig = null

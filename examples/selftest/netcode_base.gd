@@ -151,6 +151,10 @@ class Counted extends Movement:
 	var applied: int = 0
 	var last_applied: int = -1
 
+	func _init() -> void:
+		# It counts snapshots, so an unchanged one is not skipped (GSNetConfig.skip_unchanged_state_applied).
+		state_applied_every_snapshot = true
+
 	func _net_state_applied(tick: int) -> void:
 		applied += 1
 		last_applied = tick
