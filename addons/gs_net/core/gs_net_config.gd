@@ -74,10 +74,9 @@ const MAX_SNAPSHOT_PARTS := 16
 ## [code]--net-sim-interp=false[/code] turns it off.
 @export var sim_interp: bool = true
 
-## With [member sim_interp], keep a remote entity's samples only in the native interpolator: a snapshot's values go
-## straight from the native decode into it, and no [GSNetInterpTrack] is built. Every read of a track then goes
-## through [GSNetInterpolator] ([method GSNetInterpolator.track_samples], [method GSNetInterpolator.newest_tick],
-## [method GSNetInterpolator.value_at]); a game that reads [code]_tracks[/code] directly must leave it off.
+## With [member sim_interp], keep a remote entity's samples only in the native interpolator (no [GSNetInterpTrack]);
+## reads go through [method GSNetInterpolator.track_samples], [method GSNetInterpolator.newest_tick] and
+## [method GSNetInterpolator.value_at]. A game that reads [code]_tracks[/code] directly must leave it off.
 @export var sim_interp_tracks_only: bool = false
 
 ## Leave a remote entity alone for a frame when its interpolated draw equals what was written the frame before and no

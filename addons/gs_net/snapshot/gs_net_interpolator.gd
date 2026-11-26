@@ -65,9 +65,7 @@ var _last_late_tick: int = -1
 var _late_fed: bool = false
 
 ## GameSpice Sim's native twin of the tracks and of [method apply]'s draw, or null: see
-## [member GSNetConfig.sim_interp]. With [member GSNetConfig.sim_interp_tracks_only] and a library that answers
-## [method value_at], [method value_between] and [method track_samples] itself the samples live there alone
-## ([member _native_only]); otherwise the GDScript tracks mirror them.
+## [member GSNetConfig.sim_interp]. The GDScript tracks mirror it unless [member _native_only].
 const NATIVE_CLASS := &"GSSimInterpolator"
 ## Off for a test or a bench that wants the GDScript path in a process with the library.
 static var native_enabled := true
@@ -107,12 +105,9 @@ func is_native() -> bool:
 	return _native != null
 
 
-## Hands [param behaviour]'s [method GSNetBehaviour._net_interpolated] to GameSpice Sim's library, for a hook that only copies
-## interpolated values: after each frame's writes, every [param pairs] entry (behaviour property -> state property) is copied onto
-## the object reached from [param node] through the [param chain] properties (empty: the node itself), then
-## [code]node.global_position[/code] is set to that object's [param position] property, all inside [method apply_frame]'s one call
-## and without calling the hook. Nothing happens once [param node] is freed. False (the hook stays) without a library that can.
-## Never call it from inside the hook (the library is mid-apply there and panics on re-entry): defer it.
+## Hands a copy-only [method GSNetBehaviour._net_interpolated] to GameSpice Sim: each frame, inside [method apply_frame], every [param pairs] entry (behaviour -> state property) is copied onto the
+## object [param node] reaches through [param chain] (empty: the node), then [code]node.global_position[/code] is set to its [param position]; the hook is not called, nor anything once [param node] is freed.
+## False (the hook stays) without a library that can. Never call it from inside the hook (the library is mid-apply there and panics on re-entry): defer it.
 func bind_mirror(behaviour: GSNetBehaviour, node: Node3D, chain: PackedStringArray, pairs: Dictionary, position: StringName) -> bool:
 	if _native == null or not ClassDB.class_has_method(NATIVE_CLASS, &"bind_mirror"):
 		return false

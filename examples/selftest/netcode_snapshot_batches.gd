@@ -129,7 +129,8 @@ func _snapshot_batch_parity() -> void:
 	var got := _snapshot_batch_run(true)
 	if int(got["held"]) == 0 and not ClassDB.class_exists(GSNetSnapshotBatch.CLASS):
 		print("  (native snapshot batch not available, parity skipped)")
-		_skipped_checks += 16
+		# 16 here, and the rig check of each of the two runs below that never start.
+		_skipped_checks += 18
 		return
 	_check("snapshot batch parity: the batch holds the entities (%d of 12)" % got["held"],
 		int(got["held"]) == 12 and int(reference["held"]) == 0)
