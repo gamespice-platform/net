@@ -575,6 +575,9 @@ func _normal_view(view: Dictionary) -> Dictionary:
 
 ## [member GSNetConfig.native_reads] for the next [method _threads_scenario] runs; -1 keeps the default.
 var _scenario_native_reads := -1
+## True: [method _threads_scenario] makes the core itself and installs it with
+## [method GSNetManager.set_native_core], as a game with its own core does.
+var _scenario_install_core := false
 
 
 ## One run of [method _test_snapshot_threads]'s game; everything it sent and kept, as bytes.
@@ -592,6 +595,9 @@ func _threads_scenario(
 	host.config.native_interest = native_interest
 	if _scenario_native_reads >= 0:
 		host.config.native_reads = _scenario_native_reads
+	if _scenario_install_core and host.config.native:
+		var made := GSNetNative.make_core(host.config)
+		host.set_native_core(made.value if made.ok else null, "installed" if made.ok else "installed none")
 	# 1500 B per window of ten ticks (the window is scripted below): well under what the
 	# entities in view want, so the accumulator decides who waits.
 	host.config.per_client_budget = 1500
@@ -753,8 +759,8 @@ func _threads_scenario(
 		"payloads": payloads, "states": states, "peers_fed": peers_fed.size(),
 		"starved": starved, "split": split, "pooled": host._snapshot_pooled, "note": host._snapshot_threads_note,
 		"snapshots": TICKS, "cache_hits": 0, "normal_states": normal_states,
-		"native_note": host._native_note,
-		"interest_native": host._native != null and bool(host._native.call(&"describe").get("interest", false)),
+		"native_note": host.native_note(),
+		"interest_native": host.native_core() != null and bool(host._native.call(&"describe").get("interest", false)),
 		"read_mode": int(host._native.call(&"describe").get("read_mode", -1)) if host._native != null else -1,
 		"read_mismatches": int(host._native.call(&"describe").get("read_mismatches", 0)) if host._native != null else 0,
 	}

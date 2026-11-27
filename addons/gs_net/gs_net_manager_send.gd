@@ -187,6 +187,32 @@ func _native_for_snapshot() -> Object:
 	return _native
 
 
+## Installs a snapshot core a game made itself (another library's, with the same methods as
+## [GSNetNative]'s), or with [param core] null keeps snapshots in GDScript; [param note] is what
+## [method describe_lines] shows. Sets [member GSNetConfig.native] to match, so the manager does
+## not make its own core over this one. Send records are reset only when the core changes,
+## since each path keeps its own acks.
+func set_native_core(core: Object, note: String) -> void:
+	if config != null:
+		config.native = core != null
+	if core != _native:
+		_reset_send_views()
+	_native = core
+	_native_tried = true
+	_native_note = note
+
+
+## The native snapshot core in use, or null while snapshots are built in GDScript.
+func native_core() -> Object:
+	return _native
+
+
+## What happened to the native core ("on (...)", "off", why GDScript is in use), "" before the
+## first snapshot asked for one.
+func native_note() -> String:
+	return _native_note
+
+
 ## Every behaviour's send records dropped, GDScript's and the native core's hold on them: each
 ## path keeps its own acks, so after a switch the other's are stale and everything is resent.
 func _reset_send_views() -> void:
