@@ -1,0 +1,18 @@
+# Server tick scripts checked by gs-ci scripts/check-gd-perf.py (tools/gd_perf_lint.py).
+# One fnmatch glob per line over tracked paths. Baseline: ci/efficiency/gd-perf.tsv.
+addons/gs_net/gs_net_manager*.gd
+addons/gs_net/core/gs_net_clock.gd
+addons/gs_net/wire/gs_net_writer.gd
+addons/gs_net/wire/gs_net_reader.gd
+addons/gs_net/wire/gs_net_packet.gd
+addons/gs_net/replication/gs_net_behaviour.gd
+addons/gs_net/replication/gs_net_var.gd
+addons/gs_net/replication/gs_net_identity.gd
+addons/gs_net/replication/gs_net_registry.gd
+addons/gs_net/interest/*.gd
+addons/gs_net/bandwidth/*.gd
+addons/gs_net/lagcomp/*.gd
+addons/gs_net/prediction/*.gd
+addons/gs_net/stats/*.gd
+# Run once (cvar/spec tables, config parsing, save/restore, descriptions), not per tick:
+cold+: ^(from_.*|describe.*|specs|cvar_specs|_absorb_specs|set_cvar|follow_cvars|validate.*|presets|properties|standard_pair|restore|_restore_.*|to_config|parse_.*|_parse_.*|find_spot)$
