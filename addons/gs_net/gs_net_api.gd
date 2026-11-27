@@ -8,5 +8,6 @@ extends RefCounted
 # 24: GSNetInterpolator.track_samples / newest_tick / has_track and GSNetConfig.sim_interp_tracks_only. 25: GSNetInterpolator.bind_mirror / unbind_mirror / mirror_count (a copy-only _net_interpolated done natively) and GSNetBehaviour.listens_state_applied() (a snapshot apply skips the inherited no-op _net_state_applied).
 # 26: GSNetConfig.skip_unchanged_state_applied (default on: _net_state_applied only when a read changed a value), GSNetBehaviour.state_applied_every_snapshot, GSNetSnapshotBatch.last_changed / hooks_skipped.
 # 27: GSNetManager.set_native_core(core, note) / native_core() / native_note() (a game installs its own snapshot core).
-const LEVEL := 27
+# 28: GSNetConfig.snapshot_clock_from_tick (the snapshot clock counts ticks, for hand-driven or compared servers).
+const LEVEL := 28
 const OLDEST := 1

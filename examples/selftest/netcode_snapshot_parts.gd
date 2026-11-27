@@ -606,6 +606,15 @@ func _threads_scenario(
 	distance.evaluation_interval_sec = 0.0
 	host.interest = distance
 	host._test_skew_pooled = skew
+	# Every run compares bytes with another run, so lingering expires on the snapshot clock counted in
+	# ticks: on the wall clock a run slowed by a loaded machine let a leaver go ticks earlier (the
+	# "thin" and installed-core comparisons failed now and then on 4 extra entries).
+	host.config.snapshot_clock_from_tick = true
+	var tick_clock := variant == "tickclock"
+	if tick_clock:
+		# A cache that expires on the snapshot clock too: a run that stalls on the wall clock
+		# ("Slow") must send what one that does not sends.
+		distance.evaluation_interval_sec = 0.1
 	if variant == "thin":
 		distance.far_every = 3
 		distance.far_distance = 6.0
@@ -655,7 +664,7 @@ func _threads_scenario(
 		# The first ten are the peers' own (the observers interest measures from).
 		var owner := 2 + i if i < PEERS else 0
 		var spawned: GSNetIdentity = host.spawner.spawn(&"counted", owner, Transform3D.IDENTITY, 0).value
-		spawned.interest_linger_sec = 1.0e6 if rich else 0.0
+		spawned.interest_linger_sec = 1.0e6 if rich else 0.2 if tick_clock else 0.0
 		# Two always-relevant entities: the pinned path under a cache hit.
 		spawned.always_relevant = rich and i >= PEERS and i < PEERS + 2
 		if variant == "thin" and i < PEERS:
@@ -667,6 +676,8 @@ func _threads_scenario(
 	var starved := 0
 	var split := 0
 	for tick in range(1, TICKS + 1):
+		if tick_clock and label.ends_with("Slow"):
+			OS.delay_msec(7)
 		for i in behaviours.size():
 			var c := behaviours[i]
 			# A pure function of (entity, tick): a slow circle per entity, the peers' own

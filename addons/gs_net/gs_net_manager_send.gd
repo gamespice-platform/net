@@ -16,7 +16,7 @@ func _send_snapshots(
 	# The clock read once for the whole snapshot, for interest's cache and every rate limit:
 	# read per peer, two peers either side of a millisecond could be answered differently in
 	# one snapshot, and a snapshot built on workers could not be compared with one built here.
-	var now_ms := Time.get_ticks_msec()
+	var now_ms := tick * 1000 / config.tick_rate if config.snapshot_clock_from_tick else Time.get_ticks_msec()
 	var context := {"tick": tick, "config": config, "now_ms": now_ms}
 	var prep_started := Time.get_ticks_usec()
 

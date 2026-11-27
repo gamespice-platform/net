@@ -32,7 +32,15 @@ func _test_snapshot_threads() -> void:
 		var checked: Dictionary = _threads_scenario("Extra" + variant + "Verify", 2, false, variant)
 		GSParallel.verify = false
 		extra[variant] = [serial, pooled, checked]
+	GSParallel.verify = false
+	var clock_fast: Dictionary = _threads_scenario("ClockFast", 0, false, "tickclock")
+	var clock_slow: Dictionary = _threads_scenario("ClockSlow", 3, false, "tickclock")
 	GSParallel.verify = was_verify
+	_check("snapshot_clock_from_tick: a run stalled on the wall clock sends the same bytes %s"
+			% _first_difference(clock_fast["payloads"], clock_slow["payloads"]),
+		(clock_fast["payloads"] as Array).size() > 100
+			and _first_difference(clock_fast["payloads"], clock_slow["payloads"]) == ""
+			and _first_difference(clock_fast["states"], clock_slow["states"]) == "")
 
 	_check("the scenario sent parts to ten peers (%d payloads)" % (off["payloads"] as Array).size(),
 		int(off["peers_fed"]) == 10 and (off["payloads"] as Array).size() > 300)
