@@ -56,6 +56,8 @@ var _share_dirty: bool = false
 ## the newest serial (one serial per tick), so this covers up to 16 ticks between snapshots;
 ## a peer further behind than that takes the per-peer path, which is never wrong.
 const _KEPT_READS := 17
+## The "serial no longer kept" default for [method _dirty_since]'s lookup: shared and read-only.
+const _NO_READS := {}
 
 
 ## The snapshot's clock, read once by the manager for every peer ([method begin_snapshot_reads]), or -1 outside one: what [member GSNetVar.max_rate] is measured against.
@@ -323,7 +325,7 @@ func _collect_dirty(
 
 ## What a peer whose record is exactly the reads of snapshot [param since] is owed now, by [method collect_dirty]'s rule. [code]null[/code] when those reads are gone or lack a property (take the per-peer path). Shared; do not modify.
 func _dirty_since(since: int, peer_id: int) -> Variant:
-	var then: Dictionary = _reads_by_serial.get(since, {})
+	var then: Dictionary = _reads_by_serial.get(since, _NO_READS)
 	if then.is_empty() and not net_vars.is_empty():
 		return null
 	var owner: int = identity.owner_peer_id

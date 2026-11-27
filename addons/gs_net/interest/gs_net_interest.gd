@@ -7,6 +7,8 @@ extends Resource
 ## players each hearing about 100 entities is 10,000 updates a tick.
 
 const CHANNEL := "net.interest"
+## The default for a lookup that only reads (or replaces) a missing per-peer dictionary: shared and read-only.
+const _EMPTY := {}
 
 ## Human-readable name, for `net_status`.
 @export var strategy_name: String = "custom"
@@ -202,7 +204,7 @@ func relevant_for(
 	# Without this an entity pacing across the boundary costs a full spawn and
 	# despawn several times a second.
 	var linger := _lingering.get(peer_id, {}) as Dictionary
-	var previous: Dictionary = _cache.get(peer_id, {}).get("ids", {})
+	var previous: Dictionary = _cache.get(peer_id, _EMPTY).get("ids", _EMPTY)
 
 	for net_id in previous:
 		if not ids.has(net_id) and not linger.has(net_id):
@@ -261,7 +263,7 @@ func relevance(
 	# pacing across the boundary costs a full spawn and despawn several times a second. A copy: the
 	# stored one is written to below, and this must not write.
 	var linger := (_lingering.get(peer_id, {}) as Dictionary).duplicate()
-	var previous: Dictionary = _cache.get(peer_id, {}).get("ids", {})
+	var previous: Dictionary = _cache.get(peer_id, _EMPTY).get("ids", _EMPTY)
 
 	for net_id in previous:
 		if not ids.has(net_id) and not linger.has(net_id):
@@ -440,7 +442,11 @@ func _note_cap(peer_id: int, count: int, limit: int, context: Dictionary) -> voi
 	if peer_id == 0 or limit <= 0:
 		return
 
-	var state: Dictionary = _cap_state.get(peer_id, {"capped": false, "warned": false})
+	# Per peer per tick: the state is made once per peer, not as a get() default on every call.
+	var state: Dictionary = _cap_state.get(peer_id, _EMPTY)
+	if state.is_empty():
+		state = {"capped": false, "warned": false}
+		_cap_state[peer_id] = state
 	var tick := int(context.get("tick", 0))
 
 	if not state["capped"] and count > limit:
@@ -461,8 +467,6 @@ func _note_cap(peer_id: int, count: int, limit: int, context: Dictionary) -> voi
 			"peer": peer_id, "relevant": count, "cap": limit,
 			"ticks": tick - int(state.get("since_tick", tick)),
 		})
-
-	_cap_state[peer_id] = state
 
 
 static func _find(all: Array[GSNetIdentity], net_id: int) -> GSNetIdentity:

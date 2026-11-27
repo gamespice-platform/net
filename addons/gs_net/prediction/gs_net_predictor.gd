@@ -6,6 +6,8 @@ extends RefCounted
 ## round trip.
 
 const CHANNEL := "net.predict"
+## The default for a [member _predicted] lookup that only reads: shared and read-only.
+const _EMPTY := {}
 
 var config: GSNetConfig
 
@@ -99,8 +101,8 @@ func _remember(identity: GSNetIdentity, tick: int) -> void:
 ## Whether the server's [param values] for [param server_tick] are what this client
 ## predicted for that tick, every property it predicts ([member GSNetVar.client_predicts]).
 func _predicted_matches(identity: GSNetIdentity, server_tick: int, values: Dictionary) -> bool:
-	var ticks: Dictionary = _predicted.get(identity.net_id, {})
-	var mine: Dictionary = ticks.get(server_tick, {})
+	var ticks: Dictionary = _predicted.get(identity.net_id, _EMPTY)
+	var mine: Dictionary = ticks.get(server_tick, _EMPTY)
 	if mine.is_empty():
 		_note_mismatch(&"(no prediction)")
 		return false
@@ -127,7 +129,7 @@ func _note_mismatch(property: StringName) -> void:
 
 ## Drops the remembered ticks up to [param through]: acknowledged, never compared again.
 func _forget_through(net_id: int, through: int) -> void:
-	var ticks: Dictionary = _predicted.get(net_id, {})
+	var ticks: Dictionary = _predicted.get(net_id, _EMPTY)
 	for t: int in ticks.keys():
 		if t <= through:
 			ticks.erase(t)
@@ -253,7 +255,7 @@ func reconcile(
 	if config.skip_matching_replays:
 		_forget_through(identity.net_id, server_tick)
 		# A replay that stopped short left the ticks after it as the old prediction had them.
-		var ticks: Dictionary = _predicted.get(identity.net_id, {})
+		var ticks: Dictionary = _predicted.get(identity.net_id, _EMPTY)
 		for t: int in ticks.keys():
 			if t >= replay_tick:
 				ticks.erase(t)

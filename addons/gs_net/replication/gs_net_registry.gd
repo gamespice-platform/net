@@ -9,6 +9,8 @@ const CHANNEL := "net.registry"
 ## Ids fit this many bits on the wire.
 const ID_BITS := 24
 const MAX_ID := (1 << ID_BITS) - 1
+## The default for an [member _by_owner] lookup that only iterates: shared and read-only.
+const _NO_IDS := []
 
 ## Emitted when an entity joins the table, on every peer.
 signal registered(identity: GSNetIdentity)
@@ -250,7 +252,7 @@ func ids() -> PackedInt64Array:
 func owned_by(peer_id: int) -> Array[GSNetIdentity]:
 	var out: Array[GSNetIdentity] = []
 
-	for net_id in _by_owner.get(peer_id, []):
+	for net_id in _by_owner.get(peer_id, _NO_IDS):
 		var identity := get_identity(net_id)
 		if identity != null:
 			out.append(identity)
