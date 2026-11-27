@@ -504,8 +504,8 @@ func perf_counters() -> Dictionary:
 
 ## Applies interpolation. Call from [method Node._process], not the tick loop.
 ##
-## [param alpha] is how far this frame sits into the current tick; left negative it is [method GSNetClock.render_alpha], which needs the engine's physics rate equal to the tick rate. Interpolating on the tick would quantise remote motion to the tick rate. A suite that steps by hand passes 0.0.
-func interpolate_frame(alpha: float = -1.0) -> void:
+## [param alpha] is how far this frame sits into the current tick; left negative it is [method GSNetClock.render_alpha], which needs the engine's physics rate equal to the tick rate. Interpolating on the tick would quantise remote motion to the tick rate. A suite that steps by hand passes 0.0. [param elapsed_sec] is the frame's length when the host knows it (API 29); left negative it is the wall clock's. Either way the buffer follows the time the render timeline moved, not the wall clock: a suite that steps frames by hand has almost no wall time between them, and a buffer grown by one stall there never shrank again.
+func interpolate_frame(alpha: float = -1.0, elapsed_sec: float = -1.0) -> void:
 	if is_server or interpolator == null or not clock.is_synced():
 		return
 
@@ -514,18 +514,24 @@ func interpolate_frame(alpha: float = -1.0) -> void:
 	if alpha < 0.0:
 		alpha = clock.render_alpha()
 
-	# The buffer follows its target at a bounded rate, on the frame's own time, so it
-	# never moves the render time backwards. See GSNetInterpolator._target_snapshots.
-	var now_usec := Time.get_ticks_usec()
-	var elapsed := 0.0 if _last_frame_usec == 0 else float(now_usec - _last_frame_usec) / 1e6
-	_last_frame_usec = now_usec
-	interpolator.advance(minf(elapsed, 0.25))
-
 	# The RECEIVE timeline, not the server's tick: the delay is counted back from the newest
 	# snapshot held. Alpha is -1 to 2 because it carries a slip (see GSNetClock.render_alpha)
 	# plus what re-anchoring moved that the drawing has not followed yet (receive_slip).
 	var server_tick_now := float(clock.received_tick()) + clampf(alpha, -1.0, 2.0) \
 		+ clock.receive_slip()
+
+	# The buffer follows its target at a bounded rate, on the time the render timeline moved, so it
+	# never moves the render time backwards. See GSNetInterpolator._target_snapshots.
+	var elapsed := elapsed_sec
+	if elapsed < 0.0:
+		var now_usec := Time.get_ticks_usec()
+		elapsed = 0.0 if _last_frame_usec == 0 else float(now_usec - _last_frame_usec) / 1e6
+		_last_frame_usec = now_usec
+	var moved := 0.0
+	if not is_nan(_last_render_tick):
+		moved = maxf(0.0, server_tick_now - _last_render_tick) / float(maxi(1, clock.tick_rate))
+	_last_render_tick = server_tick_now
+	interpolator.advance(minf(elapsed, 0.25), minf(moved, 0.25))
 
 	interpolator.apply_frame(registry.all(), server_tick_now)
 

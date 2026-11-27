@@ -111,6 +111,10 @@ const MAX_SNAPSHOT_PARTS := 16
 ## Adjust the buffer from observed jitter and loss.
 @export var adaptive_interpolation: bool = true
 
+## The longest gap between two snapshot arrivals the jitter estimate counts, in snapshot intervals; 0 is unlimited. A stall longer than
+## this is counted as this long: one hitch is not a jittery link (lateness and loss still size the buffer). API 29.
+@export_range(0.0, 64.0, 0.5) var interp_arrival_gap_cap: float = 8.0
+
 ## Longest extrapolation when snapshots stop arriving, in seconds. Extrapolation is guessing, and it is
 ## wrong in a way that produces rubber-banding when it is corrected.
 @export_range(0.0, 1.0, 0.05) var max_extrapolation_sec: float = 0.25

@@ -283,6 +283,8 @@ var _message_limiter: GSRateLimiter = null
 
 ## When [method interpolate_frame] last ran, for the interpolation buffer's rate limit.
 var _last_frame_usec: int = 0
+## The render position [method interpolate_frame] drew last, in ticks: the buffer moves by how far it went since (NAN: none yet).
+var _last_render_tick: float = NAN
 
 ## Observers frozen by [method _freeze_job] because they were registered after the tick's
 ## identity list was read; thawed with the rest.

@@ -28,7 +28,7 @@ var _delay_snapshots: float = 2.0
 ## Rolling estimate of the gap between arrivals, in milliseconds.
 var _arrival_interval_ms: float = 0.0
 var _arrival_jitter_ms: float = 0.0
-var _last_arrival_ms: int = 0
+var _last_arrival_ms: float = 0.0
 
 ## Counters a suite and an operator read. [member _samples] is every [method sample] call with two or more samples (the denominator), [member _stalls] the render time at or past the newest snapshot, [member _extrapolations] the subset that guessed past it.
 ##
@@ -184,12 +184,15 @@ func _note_timeline(tick: int) -> void:
 
 ## Notes that a snapshot arrived, for the adaptive buffer.
 ##
-## Once per snapshot, not per entity: what is measured is how regularly packets land.
-func note_arrival() -> void:
-	var now := Time.get_ticks_msec()
+## Once per snapshot, not per entity: what is measured is how regularly packets land. [param now_msec] is when it arrived on the host's own clock, in milliseconds; left negative it is the wall clock. A gap longer than [member GSNetConfig.interp_arrival_gap_cap] snapshot intervals is counted as that many: one stall is not a jittery link, and uncapped a single 238 ms hitch held a 64-tick buffer near its 10-snapshot ceiling (API 29).
+func note_arrival(now_msec: float = -1.0) -> void:
+	var now := float(Time.get_ticks_msec()) if now_msec < 0.0 else now_msec
 
-	if _last_arrival_ms > 0:
-		var gap := float(now - _last_arrival_ms)
+	if _last_arrival_ms > 0.0:
+		var gap := now - _last_arrival_ms
+		if config.interp_arrival_gap_cap > 0.0:
+			var nominal_ms := _snapshot_ticks() / float(maxi(1, config.tick_rate)) * 1000.0
+			gap = minf(gap, config.interp_arrival_gap_cap * nominal_ms)
 
 		if _arrival_interval_ms <= 0.0:
 			_arrival_interval_ms = gap
@@ -200,7 +203,8 @@ func note_arrival() -> void:
 			_arrival_jitter_ms = _arrival_jitter_ms * 0.9 \
 				+ absf(gap - _arrival_interval_ms) * 0.1
 
-	_last_arrival_ms = now
+	# Never zero, which means "none yet".
+	_last_arrival_ms = maxf(now, 0.001)
 
 	# A host that also reports lateness adapts from there, once per arrival.
 	if config.adaptive_interpolation and not _late_fed:
@@ -236,14 +240,15 @@ func _late_ticks() -> float:
 	return sorted[clampi(int(ceilf(0.95 * float(sorted.size() - 1))), 0, sorted.size() - 1)]
 
 
-## Moves the drawn buffer toward its target by at most [constant GROW_RATE] of the time
-## that passed. Called once a frame, before sampling, by
-## [method GSNetManager.interpolate_frame].
-func advance(elapsed_sec: float) -> void:
+## Moves the drawn buffer toward its target by at most [constant GROW_RATE] of the time that passed. Called once a frame, before sampling, by [method GSNetManager.interpolate_frame].
+##
+## [param elapsed_sec] is the frame's length, which eases a resumed stream. [param buffer_sec], when not negative, is the time the render timeline moved instead, which is what the buffer follows (API 29): a host that steps frames by hand has next to no wall time between them, and a buffer moved by the wall clock there never came back down from a stall.
+func advance(elapsed_sec: float, buffer_sec: float = -1.0) -> void:
 	_frame_driven = true
 	_frame_elapsed = maxf(0.0, elapsed_sec)
+	var moved := _frame_elapsed if buffer_sec < 0.0 else buffer_sec
 	var period := maxf(1.0, _snapshot_ticks())
-	var step := GROW_RATE * maxf(0.0, elapsed_sec) * float(maxi(1, config.tick_rate)) / period
+	var step := GROW_RATE * moved * float(maxi(1, config.tick_rate)) / period
 	_delay_snapshots = move_toward(_delay_snapshots, _target_snapshots, step)
 
 
@@ -665,7 +670,7 @@ func clear() -> void:
 	if _native != null:
 		_native.clear()
 	_timeline.clear()
-	_last_arrival_ms = 0
+	_last_arrival_ms = 0.0
 	_arrival_interval_ms = 0.0
 	_arrival_jitter_ms = 0.0
 

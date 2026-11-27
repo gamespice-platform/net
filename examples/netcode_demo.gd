@@ -1,4 +1,4 @@
-extends "selftest/netcode_snapshot_batches.gd"
+extends "selftest/netcode_interp_clock.gd"
 
 ## Runs a server and a client in one process over a loopback that can delay, reorder and drop packets, and checks the netcode works.
 ##
@@ -6,7 +6,7 @@ extends "selftest/netcode_snapshot_batches.gd"
 
 
 ## Every check this suite makes, the last one included. The section counter cannot see a check that never ran inside a section that had announced itself, so the total is compared with this. Raise it with every check added.
-const CHECKS := 686
+const CHECKS := 692
 
 
 func _ready() -> void:
@@ -38,6 +38,8 @@ func _run() -> void:
 	_test_starved_input()
 	_test_correction_offsets()
 	_test_buffer_growth()
+	_test_arrival_gap_cap()
+	_test_stall_then_hand_stepped()
 	_test_drawing_through_slips()
 	_test_spawning()
 	_test_freed_entity()

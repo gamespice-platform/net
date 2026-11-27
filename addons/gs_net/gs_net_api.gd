@@ -5,7 +5,6 @@ extends RefCounted
 
 # 7: GSNetClock.adopt_tick_rate(rate). 8: GSNetBehaviour.extrapolated_value(property, velocity_property, tick) and GSNetConfig.remote_extrapolation_sec. 17: GSNetVar.server_driven() / client_predicts.
 # 18: GSNetInput.Buffer.push_batch(inputs), the lead measured per packet. 19: GSNetManager.snapshot_due(). 20: GSNetVar.Type.PACKED_FLOAT32 and of_length(count). 21: GSNetConfig.max_snapshot_parts. 22: GSNetIdentity.interest_aim and GSNetInterest.aim_cone_deg. 23: GSNetBehaviour.net_replaying.
-# 24: GSNetInterpolator.track_samples / newest_tick / has_track and GSNetConfig.sim_interp_tracks_only. 25: GSNetInterpolator.bind_mirror / unbind_mirror / mirror_count (a copy-only _net_interpolated done natively) and GSNetBehaviour.listens_state_applied() (a snapshot apply skips the inherited no-op _net_state_applied).
-# 26: GSNetConfig.skip_unchanged_state_applied (default on: _net_state_applied only when a read changed a value), GSNetBehaviour.state_applied_every_snapshot, GSNetSnapshotBatch.last_changed / hooks_skipped.
-const LEVEL := 26
+# 24: GSNetInterpolator.track_samples / newest_tick / has_track and GSNetConfig.sim_interp_tracks_only. 25: GSNetInterpolator.bind_mirror / unbind_mirror / mirror_count (a copy-only _net_interpolated done natively) and GSNetBehaviour.listens_state_applied() (a snapshot apply skips the inherited no-op _net_state_applied). 26: GSNetConfig.skip_unchanged_state_applied (default on: _net_state_applied only when a read changed a value), GSNetBehaviour.state_applied_every_snapshot, GSNetSnapshotBatch.last_changed / hooks_skipped. 29: GSNetManager.interpolate_frame(alpha, elapsed_sec), GSNetInterpolator.advance(elapsed_sec, buffer_sec) and note_arrival(now_msec), GSNetConfig.interp_arrival_gap_cap (27 and 28 are taken by branches not yet on main).
+const LEVEL := 29
 const OLDEST := 1
