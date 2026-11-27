@@ -128,8 +128,6 @@ addons/gs_net/interest/gs_net_interest_grid.gd::describe::untyped_array	1
 addons/gs_net/interest/gs_net_visibility.gd::_split::alloc	2
 addons/gs_net/interest/gs_net_visibility.gd::describe::untyped_array	1
 addons/gs_net/interest/gs_net_visibility.gd::from_cells::untyped_array	1
-addons/gs_net/interest/gs_net_visibility.gd::from_gs_map_mesh::alloc	1
-addons/gs_net/interest/gs_net_visibility.gd::from_gs_map_mesh::dynamic_call	8
 addons/gs_net/interest/gs_net_visibility.gd::from_gs_map_mesh::untyped_array	1
 addons/gs_net/interest/gs_net_visibility.gd::native_dict::alloc	1
 addons/gs_net/interest/gs_net_visibility.gd::native_dict::untyped_array	1
