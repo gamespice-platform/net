@@ -6,7 +6,7 @@ extends "selftest/netcode_interp_clock.gd"
 
 
 ## Every check this suite makes, the last one included. The section counter cannot see a check that never ran inside a section that had announced itself, so the total is compared with this. Raise it with every check added.
-const CHECKS := 692
+const CHECKS := 694
 
 
 func _ready() -> void:

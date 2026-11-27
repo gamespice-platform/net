@@ -94,6 +94,8 @@ var _settle_local: float = -1.0
 ## Local time as [method advance] has been handed it, without the drops credited: what changes
 ## from one frame to the next, and not within one.
 var _stepped_ticks: float = 0.0
+## Seconds [method advance] has been handed in all, never reset: [method stepped_msec].
+var _stepped_sec: float = 0.0
 ## The window's first sample and local time then: whether a window far behind keeps pace.
 var _settle_first_sample: int = 0
 var _settle_first_local: float = 0.0

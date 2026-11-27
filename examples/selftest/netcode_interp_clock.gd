@@ -33,9 +33,9 @@ func _target_after_one_gap(cap: float) -> float:
 	return float(interpolator.describe()["target_snapshots"])
 
 
-## nightly #12646: a harness that steps frames by hand gets them microseconds apart in wall time.
-## One real stall grew the buffer, and the shrink ran on wall time, so it never came back down:
-## the buffer has to follow the time the render timeline moved, not the OS clock.
+## nightly #12646: a harness that steps frames by hand gets them microseconds apart in wall time. One stall grew the buffer, and the shrink ran
+## on wall time, so it never came back down: the buffer has to follow the time the render timeline moved. Arrivals are timed on the client's
+## stepped clock (GSNetManager.arrival_clock), so the buffer never reads the wall clock and every number is exact: the old shrink fails on any box.
 func _test_stall_then_hand_stepped() -> void:
 	_sections_entered += 1
 	print("")
@@ -48,6 +48,8 @@ func _test_stall_then_hand_stepped() -> void:
 		(m as GSNetManager).config.snapshot_rate = 64
 	client_d.config.adaptive_interpolation = true
 	var ok_setup := server_d.setup().ok and client_d.setup().ok
+	if ok_setup:
+		client_d.arrival_clock = client_d.clock.stepped_msec
 
 	var delivered: Array[PackedByteArray] = []
 	server_d.send_fn = func(peer_id: int, payload: PackedByteArray, d: int) -> void:
@@ -74,46 +76,76 @@ func _test_stall_then_hand_stepped() -> void:
 
 	(server_entity.behaviours[0] as Movement).velocity = Vector3(10.0, 0.0, 0.0)
 	var client_move := remote.behaviours[0] as Movement
-	var result := _run_stall_ticks(server_d, client_d, client_move, delivered)
+	var r := _run_stall_ticks(server_d, client_d, client_move, delivered)
 
-	_check("the stall grew the buffer (%.2f -> %.2f snapshots)" % [result["before"], result["peak"]],
-		result["peak"] > result["before"] + 0.3)
-	# Lateness comes off the wall-clock receive timeline, so host load moves the floor: check the shrink.
-	_check("and hand-stepped frames shrank it (low %.2f in the last 200 ticks, was %.2f, %.0f ms of wall time)"
-			% [result["after"], result["before"], result["wall_ms"]],
-		result["after"] < result["peak"] - 0.5)
-	_check("the remote never moved backwards (worst %.4f m)" % result["backwards"],
-		result["backwards"] < 0.0001)
+	_check("the stepped link holds the buffer at %.4f snapshots before the stall (%.4f)" % [STALL_BEFORE, r["before"]],
+		absf(r["before"] - STALL_BEFORE) < 0.0001)
+	# Exact frames: the buffer moves by the render time each frame moved. A buffer moved by wall time reaches
+	# the ceiling sooner on a slow box and later on a quick one, and only by chance on this frame.
+	_check("the %d-tick stall grows it to the 10-snapshot ceiling on frame %d (frame %d)"
+			% [STALL_TICKS, STALL_PEAK_AT, r["peak_at"]], r["peak_at"] == STALL_PEAK_AT)
+	_check("hand-stepped frames bring it back within %.2f of %.4f on frame %d (frame %d, %.0f ms of wall time)"
+			% [STALL_TOLERANCE, STALL_BEFORE, STALL_BACK_AT, r["back_at"], r["wall_ms"]],
+		r["back_at"] == STALL_BACK_AT)
+	_check("and it ends at %.4f snapshots after %d frames (%.4f)" % [STALL_END, r["frames"], r["end"]],
+		absf(r["end"] - STALL_END) < 0.0001)
+	_check("the remote never moved backwards (worst %.4f m)" % r["backwards"],
+		r["backwards"] < 0.0001)
 
 	_free_delay_managers(server_d, client_d)
 	_sections_completed += 1
 
 
-## Ten seconds at 64 ticks with four hand-stepped frames a tick and one real 240 ms stall at tick 200.
+## The buffer on the stepped link just before the stall, in snapshots: still easing from the configured 2 toward 1.
+const STALL_BEFORE := 1.1353
+## Snapshots the server sends while none reach the client (a quarter second at 64 ticks).
+const STALL_TICKS := 16
+## Frames counted from the end of the stall: when the buffer first reaches the ceiling, when it is first back within
+## STALL_TOLERANCE snapshots of STALL_BEFORE, and where it ends (STALL_RUN_TICKS ticks in all).
+const STALL_PEAK_AT := 354
+const STALL_BACK_AT := 3672
+const STALL_END := 1.0022
+const STALL_TOLERANCE := 0.02
+const STALL_RUN_TICKS := 1100
+## Frames drawn per tick: each is an eighth of a tick of render time and next to no wall time.
+const STALL_FRAMES_PER_TICK := 8
+
+
+## STALL_RUN_TICKS ticks at 64 a second, eight hand-stepped frames a tick, the server's snapshots held back for
+## STALL_TICKS ticks from tick 200 and then delivered in one burst.
 func _run_stall_ticks(
 		server_d: GSNetManager, client_d: GSNetManager, client_move: Movement,
 		delivered: Array[PackedByteArray]) -> Dictionary:
 	var interp := client_d.interpolator
-	var result := {"before": 0.0, "peak": 0.0, "after": INF, "backwards": 0.0, "wall_ms": 0.0}
+	var r := {"before": 0.0, "peak_at": -1, "back_at": -1, "end": 0.0, "frames": 0, "backwards": 0.0,
+		"wall_ms": -float(Time.get_ticks_msec())}
 	var last_x := -INF
-	for tick in range(1, 640):
+	var frame := -1
+	for tick in range(1, STALL_RUN_TICKS):
 		if tick == 200:
-			result["before"] = interp.delay_snapshots()
-			OS.delay_msec(240)
-			result["wall_ms"] = -float(Time.get_ticks_msec())
+			r["before"] = interp.delay_snapshots()
 		server_d.server_tick(tick)
-		for payload in delivered:
-			var _applied := client_d.receive_snapshot(payload)
-		delivered.clear()
-		for quarter in range(4):
-			client_d.interpolate_frame(float(quarter) * 0.25)
+		if tick < 200 or tick >= 200 + STALL_TICKS:
+			for payload in delivered:
+				var _applied := client_d.receive_snapshot(payload)
+			delivered.clear()
+		if tick == 200 + STALL_TICKS:
+			frame = 0
+		for f in range(STALL_FRAMES_PER_TICK):
+			client_d.interpolate_frame(float(f) / float(STALL_FRAMES_PER_TICK))
 			if tick > 64:
-				result["backwards"] = maxf(result["backwards"], last_x - client_move.position.x)
+				r["backwards"] = maxf(r["backwards"], last_x - client_move.position.x)
 			last_x = client_move.position.x
+			if frame < 0:
+				continue
+			var delay := interp.delay_snapshots()
+			if r["peak_at"] < 0 and delay >= 9.9999:
+				r["peak_at"] = frame
+			elif r["peak_at"] >= 0 and r["back_at"] < 0 and absf(delay - r["before"]) <= STALL_TOLERANCE:
+				r["back_at"] = frame
+			frame += 1
 		client_d.step(1.0 / 64.0)
-		if tick >= 200:
-			result["peak"] = maxf(result["peak"], interp.delay_snapshots())
-		if tick >= 440:
-			result["after"] = minf(result["after"], interp.delay_snapshots())
-	result["wall_ms"] += float(Time.get_ticks_msec())
-	return result
+	r["end"] = interp.delay_snapshots()
+	r["frames"] = frame
+	r["wall_ms"] += float(Time.get_ticks_msec())
+	return r

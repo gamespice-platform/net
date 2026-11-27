@@ -90,6 +90,7 @@ func advance(delta: float, max_ticks: int = 8) -> int:
 		_local_ticks += delta * float(tick_rate) * _pace
 		_nominal_ticks += delta * float(tick_rate)
 		_stepped_ticks += delta * float(tick_rate)
+		_stepped_sec += delta
 		if _lead_live and _synced:
 			_steer_lead(delta)
 

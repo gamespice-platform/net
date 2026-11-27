@@ -281,6 +281,9 @@ var _reassembler := GSNetPacket.Reassembler.new()
 var _message_limiter: GSRateLimiter = null
 
 
+## What times a snapshot's arrival for the interpolation buffer's jitter estimate: a [Callable] taking nothing and returning milliseconds (an [int] or [float], 0 or more, never going backwards). Left empty it is the wall clock, which a live client wants. A suite that steps frames by hand assigns [code]clock.stepped_msec[/code] ([method GSNetClock.stepped_msec]): its frames are microseconds apart in wall time, so the estimate followed the host's load and not the stepped link (API 29). A callable that is freed or returns anything else is an error on every arrival, and that arrival is timed on the wall clock.
+var arrival_clock: Callable = Callable()
+
 ## When [method interpolate_frame] last ran, for the interpolation buffer's rate limit.
 var _last_frame_usec: int = 0
 ## The render position [method interpolate_frame] drew last, in ticks: the buffer moves by how far it went since (NAN: none yet).

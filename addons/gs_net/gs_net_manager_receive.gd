@@ -75,7 +75,7 @@ func _admit_snapshot_tick(tick: int) -> GSResult:
 		_receiving_mask = 0
 		_receiving_total = 0
 		# The first part to arrive is the snapshot's arrival, for timing.
-		interpolator.note_arrival()
+		interpolator.note_arrival(_arrival_now_msec())
 		clock.sync_from_server(tick, stats.rtt_percentile(0.5))
 		interpolator.note_lateness(tick, clock.received_tick())
 	return null
@@ -304,3 +304,17 @@ func _reconcile(identity: GSNetIdentity, tick: int, values: Dictionary) -> void:
 	_perf_reconcile_usec += Time.get_ticks_usec() - started
 	_perf_reconciles += 1
 	_perf_replayed_ticks += predictor._last_replay_ticks
+
+
+## When this snapshot arrived for [method GSNetInterpolator.note_arrival]: [member arrival_clock]'s answer, or -1 (the wall clock) when it is empty or answered wrongly.
+func _arrival_now_msec() -> float:
+	if arrival_clock.is_null():
+		return -1.0
+	if not arrival_clock.is_valid():
+		push_error("GSNetManager.arrival_clock is not callable (its object was freed?); timing this arrival on the wall clock")
+		return -1.0
+	var now: Variant = arrival_clock.call() # perf-lint: allow dynamic_call the host's injected clock, once per snapshot tick
+	if (typeof(now) != TYPE_FLOAT and typeof(now) != TYPE_INT) or float(now) < 0.0:
+		push_error("GSNetManager.arrival_clock returned %s, not milliseconds of 0 or more; timing this arrival on the wall clock" % [now]) # perf-lint: allow string_build only on a misused clock
+		return -1.0
+	return float(now)

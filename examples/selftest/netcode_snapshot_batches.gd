@@ -201,9 +201,8 @@ func _hook_skip_run(skip: bool, batch: bool, every: bool) -> Dictionary:
 
 
 ## [b]Skipping [code]_net_state_applied[/code] for an unchanged behaviour changes no state.[/b]
-## [member GSNetConfig.skip_unchanged_state_applied] on and off, in the script path and the native
-## batch: the same properties, the hook's own copy, baselines and samples, with fewer hook calls; a
-## behaviour with [member GSNetBehaviour.state_applied_every_snapshot] keeps every call.
+## [member GSNetConfig.skip_unchanged_state_applied] on and off, in the script path and the native batch: the same properties, the hook's own copy,
+## baselines and samples, with fewer hook calls; a behaviour with [member GSNetBehaviour.state_applied_every_snapshot] keeps every call.
 func _hook_skip_parity() -> void:
 	for batch in [false, true]:
 		var label := "native batch" if batch else "script path"

@@ -184,9 +184,14 @@ func _note_timeline(tick: int) -> void:
 
 ## Notes that a snapshot arrived, for the adaptive buffer.
 ##
-## Once per snapshot, not per entity: what is measured is how regularly packets land. [param now_msec] is when it arrived on the host's own clock, in milliseconds; left negative it is the wall clock. A gap longer than [member GSNetConfig.interp_arrival_gap_cap] snapshot intervals is counted as that many: one stall is not a jittery link, and uncapped a single 238 ms hitch held a 64-tick buffer near its 10-snapshot ceiling (API 29).
+## Once per snapshot, not per entity: what is measured is how regularly packets land. [param now_msec] is when it arrived on the host's own clock, in milliseconds; left negative it is the wall clock (one clock per session: a time before the last arrival is an error, and the gap estimate starts over). A gap longer than [member GSNetConfig.interp_arrival_gap_cap] snapshot intervals is counted as that many: one stall is not a jittery link, and uncapped a single 238 ms hitch held a 64-tick buffer near its 10-snapshot ceiling (API 29).
 func note_arrival(now_msec: float = -1.0) -> void:
 	var now := float(Time.get_ticks_msec()) if now_msec < 0.0 else now_msec
+	if _last_arrival_ms > 0.0 and now < _last_arrival_ms:
+		# Two clocks mixed (a host switched GSNetManager.arrival_clock without clear()), or one that runs back.
+		push_error("GSNetInterpolator.note_arrival: %.3f ms is before the last arrival (%.3f ms); the gap estimate starts over" \
+			% [now, _last_arrival_ms])
+		_last_arrival_ms = 0.0
 
 	if _last_arrival_ms > 0.0:
 		var gap := now - _last_arrival_ms

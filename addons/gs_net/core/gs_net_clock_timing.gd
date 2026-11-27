@@ -123,6 +123,11 @@ func _note_rtt(rtt_ms: float) -> void:
 	_jitter_ms = total / float(_rtt_samples.size())
 
 
+## Milliseconds of the time [method advance] has been handed, never reset: the host's own timeline, which a suite stepping frames by hand controls exactly. Assign [code]clock.stepped_msec[/code] to [member GSNetManager.arrival_clock] to time snapshot arrivals on it (API 29).
+func stepped_msec() -> float:
+	return _stepped_sec * 1000.0
+
+
 ## The tick this client believes the server is simulating right now: the receive
 ## timeline plus the flight time.
 func server_tick() -> int:
