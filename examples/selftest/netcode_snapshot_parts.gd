@@ -576,6 +576,14 @@ func _normal_view(view: Dictionary) -> Dictionary:
 ## [member GSNetConfig.native_reads] for the next [method _threads_scenario] runs; -1 keeps the default.
 var _scenario_native_reads := -1
 
+## How far ahead of the wall clock [method _threads_scenario] starts each tick's budget window, in ms.
+## An hour: no stall of the box running the suite can roll it, so the window is the script's alone.
+var _scenario_window_ahead_ms := 3_600_000
+
+## A stall, in ms, [method _threads_scenario] takes once at tick 15, inside the snapshot, after
+## sending to peer 6 and before peer 7 is built; 0 is none.
+var _scenario_stall_ms := 0
+
 
 ## One run of [method _test_snapshot_threads]'s game; everything it sent and kept, as bytes.
 func _threads_scenario(
@@ -625,10 +633,14 @@ func _threads_scenario(
 
 	var payloads: Array = []
 	var peers_fed := {}
+	var stall := {"tick": 0, "ms": _scenario_stall_ms}
 	host.send_fn = func(peer_id: int, payload: PackedByteArray, d: int) -> void:
 		if d == GSNetMessage.Delivery.UNRELIABLE:
 			payloads.append([peer_id, payload])
 			peers_fed[peer_id] = true
+			if int(stall["ms"]) > 0 and int(stall["tick"]) == 15 and peer_id == 6:
+				OS.delay_msec(int(stall["ms"]))
+				stall["ms"] = 0
 	host.start()
 	var factory := (func(c: Dictionary) -> Node: return _build_rich(c, true)) if variant == "coded" \
 		else (func(c: Dictionary) -> Node: return _build_counted(c, true)) if variant == "computed" \
@@ -689,11 +701,12 @@ func _threads_scenario(
 				c2.label = (tick / 4 + i) % 5
 
 		# The budget's window is a wall-clock second, which one run can cross at a different tick from another; roll it every ten ticks instead.
+		# It starts ahead of the wall clock (_scenario_window_ahead_ms): started now, a stalled box rolled it in one run and not in another.
 		# "held" leaves the accumulators where they are (a native core keeps them until for_peer asks) and reads them every tenth tick only.
 		var held := variant == "held"
 		for i in PEERS:
 			var w := host.budget.record(2 + i) if held else host.budget.for_peer(2 + i)
-			w.window_started_ms = Time.get_ticks_msec()
+			w.window_started_ms = Time.get_ticks_msec() + _scenario_window_ahead_ms
 			if tick % 10 == 1:
 				w.bytes_this_second = 0
 		if rich and tick % 8 == 0:
@@ -709,6 +722,7 @@ func _threads_scenario(
 				for c in behaviours:
 					c._views.clear()
 		var before := payloads.size()
+		stall["tick"] = tick
 		host.server_tick(tick)
 		var per_peer := {}
 		for k in range(before, payloads.size()):

@@ -21,6 +21,14 @@ func _test_snapshot_threads() -> void:
 	var runs_after := GSParallel.verify_runs
 	GSParallel.verify = false
 	var broken: Dictionary = _threads_scenario("ThreadsBroken", 4, true)
+	# The serial run again, with the box stalled 2 s inside one snapshot (after peer 6's part)
+	# and the budget windows a second ahead of the wall clock: read per call, the stall rolled
+	# them for peers 7 to 10 alone, the way a loaded box once made serial and pooled differ.
+	_scenario_window_ahead_ms = 1000
+	_scenario_stall_ms = 2050
+	var stalled: Dictionary = _threads_scenario("ThreadsStall", 0, false)
+	_scenario_window_ahead_ms = 3_600_000
+	_scenario_stall_ms = 0
 	# The paths the first scenario leaves out (evaluation interval 0, no linger, no stagger,
 	# nothing rate-limited, no strings): serial against pooled again for each.
 	var extra := {}
@@ -48,6 +56,9 @@ func _test_snapshot_threads() -> void:
 			and str(on["note"]).contains("interest distance")))
 	_check("four workers send the same payloads, byte for byte %s" % _first_difference(off["payloads"], on["payloads"]),
 		_first_difference(off["payloads"], on["payloads"]) == "")
+	_check("a 2 s stall inside a snapshot leaves the later peers' budgets alone %s"
+			% _first_difference(off["payloads"], stalled["payloads"]),
+		_first_difference(off["payloads"], stalled["payloads"]) == "")
 	_check("four workers leave the same PeerViews and budgets after every tick %s"
 			% _first_difference(off["states"], on["states"]),
 		_first_difference(off["states"], on["states"]) == "")

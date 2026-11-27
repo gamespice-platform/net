@@ -314,12 +314,18 @@ func _throttle_run(ours: bool) -> Dictionary:
 		server_peer.call("close")
 		return out
 
+	# Stock ENet re-baselines its throttle every 5 s from the connect, lifting it at once; the run is ~5 s,
+	# so where that fell (box speed) gave 16 or 156 of 180. Stock's 2 and 2, the epoch a minute out, set
+	# from the client's end (the server's has not seen the connect yet): the run sees the throttle alone.
+	var to_server: Object = client_peer.call("get_peer", 1)
+	if not ours:
+		to_server.call("throttle_configure", 60000, 2, 2)
+
 	# A few quiet frames: ENet's first round-trip samples, and the throttle settings across.
 	_throttle_quiet(server_peer, client_peer)
 
 	var throttle_stat := ClassDB.class_get_integer_constant(&"ENetPacketPeer", &"PEER_PACKET_THROTTLE")
 	var deceleration_stat := ClassDB.class_get_integer_constant(&"ENetPacketPeer", &"PEER_PACKET_THROTTLE_DECELERATION")
-	var to_server: Object = client_peer.call("get_peer", 1)
 	var to_client: Object = null
 	for p in (server_peer.call("get_host") as Object).call("get_peers"):
 		to_client = p

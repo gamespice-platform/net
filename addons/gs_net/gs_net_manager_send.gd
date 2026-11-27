@@ -18,6 +18,8 @@ func _send_snapshots(
 	# one snapshot, and a snapshot built on workers could not be compared with one built here.
 	var now_ms := Time.get_ticks_msec()
 	var context := {"tick": tick, "config": config, "now_ms": now_ms}
+	# The budget's window too, until the snapshot is sent.
+	budget.snapshot_now_ms = now_ms
 	var prep_started := Time.get_ticks_usec()
 
 	var workers := _snapshot_workers()
@@ -112,6 +114,7 @@ func _send_snapshots(
 				identity.thaw_position()
 		_late_frozen.clear()
 	_ph_thaw_usec += Time.get_ticks_usec() - thaw_at
+	budget.snapshot_now_ms = -1
 
 	snapshot_sent.emit(tick, sent_to)
 

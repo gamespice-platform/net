@@ -48,6 +48,11 @@ var config: GSNetConfig
 ## peer_id -> PeerBudget
 var _peers: Dictionary = {}
 
+## The clock of the snapshot being sent (ms), or -1 for the wall clock; the window rolls at it for every peer.
+## Read per call, a window that ran out mid-snapshot gave later peers a fresh second the pooled and
+## native builds (which ask every [method remaining] up front) did not, and they sent different bytes.
+var snapshot_now_ms: int = -1
+
 
 func _init(p_config: GSNetConfig) -> void:
 	config = p_config
@@ -257,7 +262,7 @@ func note_packet(peer_id: int, bytes: int) -> void:
 ## here is a fairness mechanism between entities, not a shaping mechanism against a link, and a window
 ## is easier to read in a report than a bucket level.
 func _roll_window(budget: PeerBudget) -> void:
-	var now := Time.get_ticks_msec()
+	var now := snapshot_now_ms if snapshot_now_ms >= 0 else Time.get_ticks_msec()
 	var elapsed := now - budget.window_started_ms
 
 	if elapsed < 1000:
