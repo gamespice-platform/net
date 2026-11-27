@@ -78,7 +78,6 @@ addons/gs_net/interest/gs_net_interest.gd::_evaluate::untyped_array	1
 addons/gs_net/interest/gs_net_interest.gd::_evaluate_into::untyped_array	1
 addons/gs_net/interest/gs_net_interest.gd::_is_relevant::untyped_array	1
 addons/gs_net/interest/gs_net_interest.gd::_note_cap::alloc	3
-addons/gs_net/interest/gs_net_interest.gd::_note_cap::dynamic_call	2
 addons/gs_net/interest/gs_net_interest.gd::_note_cap::untyped_array	2
 addons/gs_net/interest/gs_net_interest.gd::_pinned::untyped_array	1
 addons/gs_net/interest/gs_net_interest.gd::_prepare::untyped_array	1
@@ -100,7 +99,6 @@ addons/gs_net/interest/gs_net_interest.gd::relevance::untyped_array	1
 addons/gs_net/interest/gs_net_interest.gd::relevant_for::untyped_array	1
 addons/gs_net/interest/gs_net_interest.gd::scores_for::alloc	1
 addons/gs_net/interest/gs_net_interest.gd::scores_for::untyped_array	1
-addons/gs_net/interest/gs_net_interest.gd::thin_into::dynamic_call	2
 addons/gs_net/interest/gs_net_interest.gd::thin_into::untyped_array	1
 addons/gs_net/interest/gs_net_interest_builtin.gd::_is_relevant::untyped_array	1
 addons/gs_net/interest/gs_net_interest_distance.gd::<members>::untyped_array	2
@@ -108,7 +106,6 @@ addons/gs_net/interest/gs_net_interest_distance.gd::_evaluate_into::untyped_arra
 addons/gs_net/interest/gs_net_interest_distance.gd::_evaluate_visible_into::untyped_array	1
 addons/gs_net/interest/gs_net_interest_distance.gd::_is_relevant::untyped_array	1
 addons/gs_net/interest/gs_net_interest_distance.gd::_prepare::alloc	1
-addons/gs_net/interest/gs_net_interest_distance.gd::_prepare::dynamic_call	1
 addons/gs_net/interest/gs_net_interest_distance.gd::_prepare::untyped_array	1
 addons/gs_net/interest/gs_net_interest_distance.gd::_score::untyped_array	1
 addons/gs_net/interest/gs_net_interest_distance.gd::describe::untyped_array	1
@@ -156,11 +153,9 @@ addons/gs_net/prediction/gs_net_predictor.gd::_predicted_matches::alloc	3
 addons/gs_net/prediction/gs_net_predictor.gd::_predicted_matches::untyped_array	3
 addons/gs_net/prediction/gs_net_predictor.gd::_remember::alloc	2
 addons/gs_net/prediction/gs_net_predictor.gd::_remember::untyped_array	1
-addons/gs_net/prediction/gs_net_predictor.gd::_visual_error::dynamic_call	2
 addons/gs_net/prediction/gs_net_predictor.gd::_visual_error::untyped_array	1
 addons/gs_net/prediction/gs_net_predictor.gd::describe::untyped_array	1
 addons/gs_net/prediction/gs_net_predictor.gd::reconcile::untyped_array	1
-addons/gs_net/prediction/gs_net_predictor.gd::visual_offset::dynamic_call	1
 addons/gs_net/prediction/gs_net_predictor.gd::visual_offset::untyped_array	1
 addons/gs_net/replication/gs_net_behaviour.gd::<members>::untyped_array	14
 addons/gs_net/replication/gs_net_behaviour.gd::_apply_read::dynamic_call	1
