@@ -2,7 +2,7 @@
 
 Multiplayer netcode for Godot 4. It keeps clocks in step, packs data tightly, copies game state from the server to clients, smooths what remote players do, predicts your own movement, checks hits fairly despite lag, and sends each player only what they need. It needs only [GameSpice Core](https://github.com/gamespice-platform/core), so you can use it with [GameSpice Server](https://github.com/gamespice-platform/server), Godot's own multiplayer, or your own transport. Part of TMC's open source [**GameSpice**](https://gamespice.net) collection (MIT licence).
 
-> Built with Claude Code. Every addon has a headless test suite and the suites pass, but little of this has met real players yet. Please report rough edges.
+> gs-net is a [GameSpice](https://gamespice.net) addon, MIT licensed and built with Claude Code. `examples/netcode_demo.tscn` runs its checks headless. The netcode of every game in [Zee's Games](https://zeesgames.com) is this addon, and those games run on live servers.
 
 ## Install
 
@@ -119,6 +119,27 @@ godot --headless --path . res://examples/netcode_demo.tscn
 ```
 
 The demo runs offline checks: wire round trips, schema mismatch detection, batching and fragments, clock convergence, replication, interest strategies, budget fairness, interpolation limits, rewind and restore, and a full server and client over a loopback with packet loss. Other suites are in `examples/`.
+
+## Used by
+
+You can see it at work in these games:
+
+- [Fatal Contact](https://zeesgames.com/fatal-contact)
+- [Airdrift](https://zeesgames.com/airdrift)
+- [Playlot](https://zeesgames.com/playlot)
+- [Hungario](https://zeesgames.com/hungario)
+- [Buses From Hell](https://zeesgames.com/buses-from-hell)
+- [Smash Copter](https://zeesgames.com/smash-copter)
+- [Zombie Zone](https://zeesgames.com/zombie-zone)
+- [Hide n Seek](https://zeesgames.com/hide-n-seek)
+- [Prop Hunt](https://zeesgames.com/prop-hunt)
+- [Murder Mystery](https://zeesgames.com/murder-mystery)
+- [Deathrun](https://zeesgames.com/deathrun)
+- [Wipeout](https://zeesgames.com/wipeout)
+- [Dangerous Delivery](https://zeesgames.com/dangerous-delivery)
+- [Look At Me](https://zeesgames.com/look-at-me)
+
+The whole collection is at [zeesgames.com](https://zeesgames.com).
 
 ## Licence
 
