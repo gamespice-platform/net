@@ -27,6 +27,17 @@ var _signed_key: int = -1
 var _fast_declarations: Array = []
 var _fast_encoded: Array = []
 
+## Whether the last [method _encoded_for] answer was encoded at its bit (copied) rather than at
+## bit 0 (shifted): a slot so the lookup returns no pair per entity per peer.
+var _found_aligned := false
+
+## What [member _signed] and the fast pair are reset to when a snapshot opens: an array no
+## caller holds, so [code]is_same[/code] matches nothing, without a new array per snapshot.
+static var _NO_SET: Array[GSNetVar] = []
+
+## A missing snapshot's reads in [method _dirty_since]: read, never written.
+static var _NO_READS: Dictionary[StringName, Variant] = {}
+
 ## Declaration -> its index in [member net_vars], built once [method _bind] has the list.
 var _index_of: Dictionary = {}
 
@@ -73,9 +84,9 @@ func begin_snapshot_reads(now_ms: int = -1, for_workers: bool = false) -> void:
 	_reads_by_serial.erase(_read_serial - _KEPT_READS)
 	_shared_dirty.clear()
 	_encoded.clear()
-	_signed = []
-	_fast_declarations = []
-	_fast_encoded = []
+	_signed = _NO_SET
+	_fast_declarations = _NO_SET
+	_fast_encoded = _NO_SET
 	_snapshot_now_ms = now_ms if now_ms >= 0 else Time.get_ticks_msec()
 	_snapshot_reads_open = true
 	if for_workers:
@@ -323,7 +334,8 @@ func _collect_dirty(
 
 ## What a peer whose record is exactly the reads of snapshot [param since] is owed now, by [method collect_dirty]'s rule. [code]null[/code] when those reads are gone or lack a property (take the per-peer path). Shared; do not modify.
 func _dirty_since(since: int, peer_id: int) -> Variant:
-	var then: Dictionary = _reads_by_serial.get(since, {})
+	var kept: Variant = _reads_by_serial.get(since)
+	var then: Dictionary = kept if kept != null else _NO_READS
 	if then.is_empty() and not net_vars.is_empty():
 		return null
 	var owner: int = identity.owner_peer_id
@@ -395,9 +407,8 @@ func write_state(
 		# peer after peer, and with nothing byte-aligned in it the encoding is bit-independent.
 		encoded = _fast_encoded
 	else:
-		var found := _encoded_for(declarations, pad)
-		encoded = found[0]
-		aligned = found[1]
+		encoded = _encoded_for(declarations, pad)
+		aligned = _found_aligned
 
 	if aligned:
 		writer.write_bit_run(encoded[0], pad, encoded[1])
@@ -484,18 +495,16 @@ func _shifted(encoded: Array, pad: int) -> PackedByteArray:
 ##
 ## Exact, not an estimate: the encoding measured is the one [method write_state] then copies. What [GSNetManager] cuts parts by ([member GSNetConfig.mtu]); [method estimated_bits] can be several times the real figure.
 func state_bits(declarations: Array[GSNetVar], pad: int) -> int:
-	var found := _encoded_for(declarations, pad & 7)
-	var encoded: Array = found[0]
-	if bool(found[1]):
+	var encoded := _encoded_for(declarations, pad & 7)
+	if _found_aligned:
 		return int(encoded[1]) - (pad & 7)
 	return int(encoded[1])
 
 
-## The encoding of [param declarations] for a writer [param pad] bits into a byte, as
-## [code][encoded, aligned][/code]: the [method _encode] result, and whether it was encoded at
-## that bit (copied with [method GSNetWriter.write_bit_run]) or at bit 0 (shifted into place).
+## The encoding of [param declarations] for a writer [param pad] bits into a byte: the
+## [method _encode] result, and in [member _found_aligned] whether it was encoded at that bit
+## (copied with [method GSNetWriter.write_bit_run]) or at bit 0 (shifted into place).
 func _encoded_for(declarations: Array[GSNetVar], pad: int) -> Array:
-	var encoded: Array = []
 	# One shared copy, shifted into place, unless something in it is byte-aligned: a string or
 	# bytes aligns before its bytes, so such a set is encoded at the bit it will be laid in at
 	# (one copy per bit, eight at most) and copied, never shifted.
@@ -520,23 +529,27 @@ func _encoded_for(declarations: Array[GSNetVar], pad: int) -> Array:
 				aligned = true
 				break
 	var at := pad if aligned else 0
+	_found_aligned = aligned
 
-	if key >= 0:
-		var at_pad: Dictionary = _encoded.get(at, {})
-		if at_pad.has(key):
-			encoded = at_pad[key]
-		else:
-			encoded = _encode(declarations, at)
-			at_pad[key] = encoded
-			_encoded[at] = at_pad
-
-	if encoded.is_empty():
+	if key < 0:
+		return _encode(declarations, at)
+	# Looked up before one is made, so a table already there costs no throwaway default.
+	var table: Variant = _encoded.get(at)
+	if table == null:
+		table = {}
+		_encoded[at] = table
+	var at_pad: Dictionary = table
+	var encoded: Array
+	if at_pad.has(key):
+		encoded = at_pad[key]
+	else:
 		encoded = _encode(declarations, at)
+		at_pad[key] = encoded
 
-	if key >= 0 and not aligned:
+	if not aligned:
 		_fast_declarations = declarations
 		_fast_encoded = encoded
-	return [encoded, aligned]
+	return encoded
 
 
 ## The encoding of [param declarations], as [code][bytes, end bit, recorded, rate-limited properties][/code], begun [param pad] zero bits into its first byte.
@@ -930,9 +943,8 @@ func write_for_view(
 		# bit-independent.
 		encoded = cache.fast_encoded
 	else:
-		var found := _encoded_for_cached(declarations, pad, cache)
-		encoded = found[0]
-		aligned = found[1]
+		encoded = _encoded_for_cached(declarations, pad, cache)
+		aligned = cache.aligned
 
 	if aligned:
 		writer.write_bit_run(encoded[0], pad, encoded[1])
@@ -975,15 +987,13 @@ func write_for_view(
 
 ## [method state_bits] with [param cache].
 func state_bits_cached(declarations: Array[GSNetVar], pad: int, cache: EncodeCache) -> int:
-	var found := _encoded_for_cached(declarations, pad & 7, cache)
-	var encoded: Array = found[0]
-	if bool(found[1]):
+	var encoded := _encoded_for_cached(declarations, pad & 7, cache)
+	if cache.aligned:
 		return int(encoded[1]) - (pad & 7)
 	return int(encoded[1])
 
 
 func _encoded_for_cached(declarations: Array[GSNetVar], pad: int, cache: EncodeCache) -> Array:
-	var encoded: Array = []
 	# One shared copy, shifted into place, unless something in it is byte-aligned; see the
 	# inline copy in [method state_bits].
 	var key := -1
@@ -1007,23 +1017,26 @@ func _encoded_for_cached(declarations: Array[GSNetVar], pad: int, cache: EncodeC
 				aligned = true
 				break
 	var at := pad if aligned else 0
+	cache.aligned = aligned
 
-	if key >= 0:
-		var at_pad: Dictionary = cache.encoded.get(at, {})
-		if at_pad.has(key):
-			encoded = at_pad[key]
-		else:
-			encoded = _encode(declarations, at)
-			at_pad[key] = encoded
-			cache.encoded[at] = at_pad
-
-	if encoded.is_empty():
+	if key < 0:
+		return _encode(declarations, at)
+	var table: Variant = cache.encoded.get(at)
+	if table == null:
+		table = {}
+		cache.encoded[at] = table
+	var at_pad: Dictionary = table
+	var encoded: Array
+	if at_pad.has(key):
+		encoded = at_pad[key]
+	else:
 		encoded = _encode(declarations, at)
+		at_pad[key] = encoded
 
-	if key >= 0 and not aligned:
+	if not aligned:
 		cache.fast_declarations = declarations
 		cache.fast_encoded = encoded
-	return [encoded, aligned]
+	return encoded
 
 
 ## Every property read once for a native snapshot, then the two bandwidth estimates and the

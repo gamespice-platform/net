@@ -132,6 +132,10 @@ class EncodeCache extends RefCounted:
 	var fast_declarations: Array = []
 	var fast_encoded: Array = []
 
+	## Whether the last [method GSNetBehaviour._encoded_for_cached] answer was encoded at its bit
+	## (copied) rather than at bit 0 (shifted): a slot so the lookup returns no pair.
+	var aligned: bool = false
+
 	## [code]synced serial * 2 + is owner[/code] -> the dirty set every peer in step from that
 	## serial is owed. See [method GSNetBehaviour.collect_dirty].
 	var shared_dirty: Dictionary = {}

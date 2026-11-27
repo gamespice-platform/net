@@ -213,7 +213,9 @@ func write_direction(direction: Vector3, bits: int = 12) -> void:
 func write_quaternion(rotation: Quaternion, bits: int = 9) -> void:
 	var q := rotation.normalized()
 
-	var components := [q.x, q.y, q.z, q.w]
+	# A Vector4 (x, y, z, w) rather than an Array: a value type, so no array is built per write.
+	# Quaternion itself cannot be indexed by int in GDScript.
+	var components := Vector4(q.x, q.y, q.z, q.w)
 	var largest := 0
 	var largest_value := absf(q.x)
 

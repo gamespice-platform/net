@@ -176,7 +176,8 @@ func note_engine_frame(frame: int, wall_usec: int, physics_frames: int, physics_
 	# The commands of the last two frames may have gone out after whatever stalled the previous
 	# one: a host flushes a frame's packets at its end, or at the next frame's poll.
 	var sent_after := _engine_frame_ticks[0]
-	_engine_frame_ticks = [_engine_frame_ticks[1], tick]
+	_engine_frame_ticks[0] = _engine_frame_ticks[1]
+	_engine_frame_ticks[1] = tick
 	_note_stall(wall_usec, float(wall_usec - _engine_prev_wall) / 1000000.0)
 	_credit_dropped(maxf(settled, _uncovered(wall_usec, before, physics_rate, max_steps)))
 	_discount_long_frame(wall_usec, float(wall_usec - _engine_prev_wall) / 1000000.0, sent_after)
@@ -538,7 +539,8 @@ func _measure_pace(sampled: int, anchor: bool) -> void:
 		if _pace_measured.size() > PACE_WINDOWS:
 			_pace_measured.pop_front()
 		if _pace_measured.size() == PACE_WINDOWS:
-			var sorted := _pace_measured.duplicate()
+			var sorted := _pace_sorted
+			sorted.assign(_pace_measured)
 			sorted.sort()
 			var median: float = sorted[sorted.size() >> 1]
 			if median < PACE_NOMINAL or (_pace < 1.0 and median < PACE_RELEASE):
@@ -711,7 +713,7 @@ func reset(start_tick: int = 0) -> void:
 	_engine_frame = -1
 	_engine_last_step = -1
 	_engine_credited = 0.0
-	_engine_frame_ticks = [0, 0]
+	_engine_frame_ticks.fill(0)
 	_frame_waits.clear()
 	_settle_local = -1.0
 	_stepped_ticks = 0.0

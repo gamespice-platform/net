@@ -228,7 +228,9 @@ func read_quaternion(bits: int = 9) -> Quaternion:
 
 	const LIMIT := 0.7071067811865476
 
-	var values := [0.0, 0.0, 0.0, 0.0]
+	# A Vector4 (x, y, z, w) rather than an Array: a value type, so no array is built per read.
+	# Quaternion itself cannot be indexed by int in GDScript.
+	var values := Vector4.ZERO
 	var sum_squares := 0.0
 
 	for i in range(4):
@@ -240,7 +242,7 @@ func read_quaternion(bits: int = 9) -> Quaternion:
 
 	values[largest] = sqrt(maxf(0.0, 1.0 - sum_squares))
 
-	var q := Quaternion(values[0], values[1], values[2], values[3])
+	var q := Quaternion(values.x, values.y, values.z, values.w)
 
 	# A quaternion that arrived as noise can still be zero-length; normalizing that
 	# is NaN, so fall back to identity rather than poisoning the scene.

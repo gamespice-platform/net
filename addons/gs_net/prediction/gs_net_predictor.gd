@@ -47,6 +47,8 @@ var _predicted: Dictionary = {}
 
 ## net_id -> the newest tick [method predict] simulated it for, where a replay stops.
 var _last_predicted: Dictionary = {}
+## Read-only stand-in for an entity or tick with nothing remembered; never written to.
+static var _NONE: Dictionary[int, Variant] = {}
 
 
 func _init(p_config: GSNetConfig) -> void:
@@ -99,8 +101,8 @@ func _remember(identity: GSNetIdentity, tick: int) -> void:
 ## Whether the server's [param values] for [param server_tick] are what this client
 ## predicted for that tick, every property it predicts ([member GSNetVar.client_predicts]).
 func _predicted_matches(identity: GSNetIdentity, server_tick: int, values: Dictionary) -> bool:
-	var ticks: Dictionary = _predicted.get(identity.net_id, {})
-	var mine: Dictionary = ticks.get(server_tick, {})
+	var ticks: Dictionary = _predicted.get(identity.net_id, _NONE)
+	var mine: Dictionary = ticks.get(server_tick, _NONE)
 	if mine.is_empty():
 		_note_mismatch(&"(no prediction)")
 		return false
@@ -127,7 +129,7 @@ func _note_mismatch(property: StringName) -> void:
 
 ## Drops the remembered ticks up to [param through]: acknowledged, never compared again.
 func _forget_through(net_id: int, through: int) -> void:
-	var ticks: Dictionary = _predicted.get(net_id, {})
+	var ticks: Dictionary = _predicted.get(net_id, _NONE)
 	for t: int in ticks.keys():
 		if t <= through:
 			ticks.erase(t)

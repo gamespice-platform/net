@@ -179,6 +179,8 @@ var _pace_best := Vector2(-1.0, 0.0)
 var _pace_window_start: float = 0.0
 ## The last [constant PACE_WINDOWS] windows' paces.
 var _pace_measured: Array[float] = []
+## [method _measure_pace]'s sorted copy of [member _pace_measured], reused.
+var _pace_sorted: Array[float] = []
 
 ## For each input tick produced, by [code]tick % LEAD_HISTORY[/code]: the tick, and how far
 ## ahead of [member _local_ticks] it was when it was produced (and sent).
