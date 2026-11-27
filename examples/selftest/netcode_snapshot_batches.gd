@@ -1,4 +1,4 @@
-extends "netcode_unchanged_and_lossy_lead.gd"
+extends "netcode_clock_jitter.gd"
 
 ## Sections of netcode_demo.gd: the client snapshot batches, each against the script path.
 

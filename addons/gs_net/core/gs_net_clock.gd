@@ -433,8 +433,11 @@ func _follow_reported_lead() -> void:
 		var to := maxi(_received_tick + 1 + input_margin_ticks, int(ceilf(_lead_position())))
 		_floor_count += 1
 		_catch_up_count += 1
-		GSLog.debug(CHANNEL, "clock caught up; it was behind the server",
-			{"behind_ticks": to - tick, "floors": _floor_count})
+		var floor_fields := _state_fields()
+		floor_fields["behind_ticks"] = to - tick
+		floor_fields["floors"] = _floor_count
+		floor_fields["lead_pos"] = snappedf(_lead_position(), 0.1)
+		GSLog.debug(CHANNEL, "clock caught up; it was behind the server", floor_fields)
 		tick = to
 		_drift_scale = 1.0
 		return
@@ -459,7 +462,7 @@ func _follow_reported_lead() -> void:
 func _state_fields() -> Dictionary:
 	return {
 		"tick": tick, "received": _received_tick, "local": snappedf(_local_ticks, 0.1),
-		"rtt": snappedf(_rtt_ms, 0.1), "jitter": snappedf(_jitter_ms, 0.1),
+		"rtt": snappedf(_rtt_ms, 0.1), "jitter": snappedf(jitter_ms(), 0.1),
 		"one_way": one_way_ticks(), "target_lead": _target_lead(),
 		"reported": snappedf(_lead_target, 0.1), "live": _lead_live,
 	}
@@ -476,6 +479,8 @@ func _follow_arrival(sampled: int, anchor: bool) -> void:
 		_receive_slip = 0.0
 		_settle_open = false
 		return
+
+	_note_arrival_lateness(maxi(0, -ahead))
 
 	if ahead >= 0:
 		# As quick as any packet has come: the server is at least this far along.
@@ -509,6 +514,12 @@ func _follow_arrival(sampled: int, anchor: bool) -> void:
 			return
 		_received_tick -= 1
 		_receive_slip += 1.0
+
+
+## Folds one snapshot's lateness ([param late_ticks] behind the quickest arrival so far, 0 for one as quick) into [member _arrival_jitter_ms]: what the margin has to cover, since a late snapshot is a late tick of the server and a command stamped for it lands after its tick.
+func _note_arrival_lateness(late_ticks: int) -> void:
+	var late_ms := minf(float(late_ticks) / float(tick_rate) * 1000.0, ARRIVAL_JITTER_CAP_SECONDS * 1000.0)
+	_arrival_jitter_ms += (late_ms - _arrival_jitter_ms) * ARRIVAL_JITTER_GAIN
 
 
 ## Measures the server's pace ([member _pace]) from one snapshot carrying [param sampled]; a new session ([param anchor]) starts at nominal.
@@ -637,7 +648,10 @@ func _trim_lead_samples() -> void:
 func _lead_position() -> float:
 	var reported := _local_ticks + _lead_target
 	var cap := float(server_tick() + _target_lead() + one_way_ticks() + LEAD_CAP_TICKS)
-	return minf(reported, cap)
+	# Never short of the newest snapshot plus the margin and the arrival spread: below it the timeline falls onto the receive timeline and [method _follow_reported_lead] skips it forward. Held here, the steering slews to it instead.
+	var jitter_ticks := int(ceilf(_arrival_jitter_ms / 1000.0 * float(tick_rate) * _pace)) if adaptive_margin else 0
+	var floor_at := float(_received_tick + 1 + input_margin_ticks + jitter_ticks)
+	return maxf(minf(reported, cap), floor_at)
 
 
 ## Remembers how far ahead of local time [param produced] was sent, at the end of the frame
@@ -699,6 +713,7 @@ func reset(start_tick: int = 0) -> void:
 	_rtt_samples.clear()
 	_rtt_ms = 0.0
 	_jitter_ms = 0.0
+	_arrival_jitter_ms = 0.0
 	_received_tick = 0
 	_settle_open = false
 	_local_ticks = 0.0
@@ -734,7 +749,7 @@ func describe() -> Dictionary:
 		"server_pace": snappedf(_pace, 0.001),
 		"lead": _target_lead(),
 		"rtt_ms": int(_rtt_ms),
-		"jitter_ms": int(_jitter_ms),
+		"jitter_ms": int(jitter_ms()),
 		"drift": "%.2f%%" % drift_percent(),
 		"snaps": _snap_count,
 		"rtt_held": _rtt_rejected,

@@ -42,7 +42,7 @@ func _target_lead() -> int:
 	if adaptive_margin:
 		# Cover the jitter as well as the mean. A connection whose latency varies by
 		# 40 ms needs that much extra margin or a fifth of its commands arrive late.
-		var jitter_ticks := int(ceilf(_jitter_ms / 1000.0 * float(tick_rate) * _pace))
+		var jitter_ticks := int(ceilf(jitter_ms() / 1000.0 * float(tick_rate) * _pace))
 		margin = maxi(margin, jitter_ticks + 1)
 
 	return one_way_ticks() + margin
@@ -152,8 +152,9 @@ func rtt_ms() -> float:
 	return _rtt_ms
 
 
+## The larger of the round trip's spread and the snapshots' arrival spread.
 func jitter_ms() -> float:
-	return _jitter_ms
+	return maxf(_jitter_ms, _arrival_jitter_ms)
 
 
 func is_synced() -> bool:

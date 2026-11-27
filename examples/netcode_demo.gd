@@ -6,7 +6,7 @@ extends "selftest/netcode_snapshot_batches.gd"
 
 
 ## Every check this suite makes, the last one included. The section counter cannot see a check that never ran inside a section that had announced itself, so the total is compared with this. Raise it with every check added.
-const CHECKS := 686
+const CHECKS := 688
 
 
 func _ready() -> void:
@@ -63,6 +63,7 @@ func _run() -> void:
 	_test_input_batches()
 	_test_input_lead()
 	_test_lossy_lead()
+	_test_jitter_lead()
 	_test_dropped_time()
 	_test_join_hitch()
 	_test_cover_stalls()

@@ -100,6 +100,8 @@ var _settle_first_local: float = 0.0
 
 var _rtt_ms: float = 0.0
 var _jitter_ms: float = 0.0
+## How late snapshots arrive against the quickest so far, in ms, smoothed: the spread the round trip cannot show ([method _note_rtt] reads the transport's own smoothed round trip, near 0 under any jitter). See [method _note_arrival_lateness].
+var _arrival_jitter_ms: float = 0.0
 var _synced: bool = false
 
 ## Whether the clock has ever been anchored with a real round-trip measurement. The first sample
@@ -147,6 +149,10 @@ const LEAD_EARLY_TICKS := 2
 
 ## Input ticks whose lead is remembered: far more than a round trip's worth at any rate.
 const LEAD_HISTORY := 512
+## Weight of each snapshot's lateness in [member _arrival_jitter_ms].
+const ARRIVAL_JITTER_GAIN := 0.1
+## One snapshot's lateness counts for at most this long: a stall's backlog is not jitter, and the stall handling owns it.
+const ARRIVAL_JITTER_CAP_SECONDS := 0.25
 
 ## Local time, in the server's ticks: what [method advance] has been handed at this clock's rate
 ## times the server's [member _pace], never scaled by the drift and including the ticks a stall
