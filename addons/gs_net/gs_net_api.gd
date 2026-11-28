@@ -9,5 +9,6 @@ extends RefCounted
 # 26: GSNetConfig.skip_unchanged_state_applied (default on: _net_state_applied only when a read changed a value), GSNetBehaviour.state_applied_every_snapshot, GSNetSnapshotBatch.last_changed / hooks_skipped.
 # 27: GSNetManager.set_native_core(core, note) / native_core() / native_note() (a game installs its own snapshot core).
 # 28: GSNetConfig.snapshot_clock_from_tick (the snapshot clock counts ticks, for hand-driven or compared servers).
-const LEVEL := 28
+# 29: GSNetConfig.native_submit_batch (every peer's native interest submit in one GSSimNetCore.submit_peers_interest call).
+const LEVEL := 29
 const OLDEST := 1

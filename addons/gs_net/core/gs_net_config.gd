@@ -57,6 +57,11 @@ const MAX_SNAPSHOT_PARTS := 16
 ## Environment [code]GS_NET_NATIVE_INTEREST=0[/code] or [code]--net-native-interest=false[/code] turns it off.
 @export var native_interest: bool = true
 
+## With [member native_interest], every peer of a snapshot goes to the core in one [code]submit_peers_interest[/code]
+## call, not one per peer: same jobs, same order, same bytes. False, or a core without it, submits per peer.
+## One switch for the process (a game's cvar writes it), read once per snapshot. (API 29.)
+static var native_submit_batch := true
+
 ## How the native core reads each behaviour's values when a snapshot opens: [code]1[/code] in the library, [code]0[/code] through [code]GSNetBehaviour._native_values[/code], [code]2[/code] both, counting a difference as [code]read_mismatches[/code] in [code]describe()[/code] and sending GDScript's values. Same bytes either way.
 ## Environment [code]GS_NET_NATIVE_READS[/code], command line [code]--net-native-reads[/code].
 @export_range(0, 2) var native_reads: int = 1

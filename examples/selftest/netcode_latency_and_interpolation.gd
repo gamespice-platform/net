@@ -483,9 +483,11 @@ func _native_interest_match(loaded: bool) -> void:
 	for variant: String in ["", "coded", "thin", "cache", "held"]:
 		var serial: Dictionary = _threads_scenario("NativeInterest" + variant + "Off", 0, false, variant)
 		var name := variant if variant != "" else "base"
-		for run: Array in [["inline", 0], ["three workers", 3]]:
+		for run: Array in [["inline", 0, true], ["three workers", 3, true], ["per peer", 0, false]]:  # per peer: native_submit_batch off
+			GSNetConfig.native_submit_batch = run[2]
 			var other: Dictionary = _threads_scenario(
-				"NativeInterest%s%d" % [variant, run[1]], run[1], false, variant, true, true)
+				"NativeInterest%s%d%s" % [variant, run[1], "" if run[2] else "p"], run[1], false, variant, true, true)
+			GSNetConfig.native_submit_batch = true
 			_check("native interest %s, %s: the same entities and payloads %s and budgets %s as GDScript" % [
 					name, run[0], _first_difference(serial["payloads"], other["payloads"]),
 					_first_difference(serial["normal_states"], other["normal_states"])],
