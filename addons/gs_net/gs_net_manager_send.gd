@@ -356,14 +356,14 @@ func _send_snapshots_native(
 ## [code]submit_peers_interest[/code] call when the core interest runs, [member GSNetConfig.native_submit_batch]
 ## is on and the core has it; otherwise one call per peer. The same jobs either way, so the same bytes.
 func _submit_native_all(core: Object, jobs: Array[SnapshotJob], core_interest: bool) -> void:
-	if not (core_interest and GSNetConfig.native_submit_batch and core.has_method(&"submit_peers_interest")):
+	if not (core_interest and GSNetConfig.native_submit_batch and core.has_method(&"submit_peers_interest")):  # perf-lint: allow dynamic_call once a snapshot tick; an older native core lacks the batch call
 		for job in jobs:
 			_submit_native(core, job, core_interest)
 		return
-	var observers: Array = []
-	var accumulators: Array = []
-	var starved: Array = []
-	var infos := PackedInt64Array()
+	var observers: Array = []  # perf-lint: allow all once a snapshot tick; the native core takes plain VarArrays (a typed array fails the call)
+	var accumulators: Array = []  # perf-lint: allow all once a snapshot tick; plain VarArray for the native core
+	var starved: Array = []  # perf-lint: allow all once a snapshot tick; plain VarArray for the native core
+	var infos := PackedInt64Array()  # perf-lint: allow alloc once a snapshot tick, handed to the native core
 	for job in jobs:
 		var info := _interest_info(core, job)
 		infos.append(info.size())
@@ -371,9 +371,9 @@ func _submit_native_all(core: Object, jobs: Array[SnapshotJob], core_interest: b
 		observers.append(job.observer)
 		accumulators.append(job.peer_budget.accumulators)
 		starved.append(job.peer_budget.starved_ticks)
-	var queued: int = core.submit_peers_interest(observers, infos, accumulators, starved)
+	var queued: int = core.submit_peers_interest(observers, infos, accumulators, starved)  # perf-lint: allow dynamic_call the core is a native object the game makes; one call a snapshot tick
 	if queued != jobs.size():
-		GSLog.error(CHANNEL, "the native core queued fewer peers than submitted", {
+		GSLog.error(CHANNEL, "the native core queued fewer peers than submitted", {  # perf-lint: allow alloc error path only
 			"queued": queued, "peers": jobs.size()})
 
 
@@ -392,7 +392,7 @@ func _interest_info(core: Object, job: SnapshotJob) -> PackedInt64Array:
 
 
 func _native_info(job: SnapshotJob) -> PackedInt64Array:
-	return PackedInt64Array([
+	return PackedInt64Array([  # perf-lint: allow alloc the native core keeps no per-peer info buffer; one small array a peer a snapshot
 		job.peer_id, job.acked_tick, 1 if job.strict else 0, 1 if job.compact else 0,
 		job.remaining_bytes, 1 if job.send_lead else 0, job.lead.x, job.lead.y,
 	])
