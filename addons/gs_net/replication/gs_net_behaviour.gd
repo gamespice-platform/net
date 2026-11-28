@@ -604,6 +604,7 @@ func read_state(reader: GSNetReader, tick: int, rewind: bool = false) -> GSResul
 
 	_read_now.clear()
 	_read_changed = false
+	_changed_groups = 0 if not state_groups.is_empty() else -1
 
 	for _i in range(count):
 		var index := reader.read_uint(6)
@@ -634,7 +635,13 @@ func read_state(reader: GSNetReader, tick: int, rewind: bool = false) -> GSResul
 
 func _apply_read(declaration: GSNetVar, value: Variant) -> void:
 	var property := declaration.property
-	if not _read_changed:
+	if not state_groups.is_empty():
+		var old: Variant = _baseline.get(property)
+		if not _baseline.has(property) or typeof(old) != typeof(value) or old != value:
+			_read_changed = true
+			if _changed_groups != -1:
+				_changed_groups |= _group_bit(property)
+	elif not _read_changed:
 		# Type first: [code]==[/code] across types is a runtime error (gdscript-hazards.md).
 		var old: Variant = _baseline.get(property)
 		_read_changed = not _baseline.has(property) or typeof(old) != typeof(value) or old != value
@@ -650,9 +657,18 @@ func _apply_read(declaration: GSNetVar, value: Variant) -> void:
 	_read_now[property] = true
 
 
+## The [member _changed_groups] bit of [param property] by [member state_groups]; 0 for an unknown one.
+func _group_bit(property: StringName) -> int:
+	if _group_bits.is_empty():
+		for i in mini(net_vars.size(), state_groups.size()):
+			_group_bits[net_vars[i].property] = 1 << state_groups[i]
+	return int(_group_bits.get(property, 0))
+
+
 ## What [method read_state] does for an entity a snapshot listed as unchanged: exactly a read of zero properties (see [code]docs/wire.md#unchanged-entities[/code]), so every consumer downstream sees what it saw for an empty body.
 func apply_unchanged(tick: int, rewind: bool = false) -> void:
 	_read_now.clear()
+	_changed_groups = 0 if not state_groups.is_empty() else -1
 	if rewind:
 		_finish_read(tick, true)
 		return
@@ -665,6 +681,8 @@ func apply_unchanged(tick: int, rewind: bool = false) -> void:
 
 func _finish_read(tick: int, rewind: bool) -> void:
 	if rewind:
+		# A rewind rewrites every property: every group counts as changed.
+		_changed_groups = -1
 		# Everything the snapshot left out goes back to what the server last said, BEFORE
 		# `_net_state_applied`, where games rewind their simulation from these properties.
 		for property: StringName in authoritative_values():

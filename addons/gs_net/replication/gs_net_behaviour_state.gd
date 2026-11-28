@@ -40,6 +40,18 @@ var state_applied_every_snapshot := false
 ## Whether the read in progress changed a value ([method GSNetBehaviour._apply_read]); [method GSNetBehaviour._finish_read] resets it.
 var _read_changed := false
 
+## Optional group bit (0..62) per declaration index ([member net_vars] order); empty: no grouping. With groups, a read sets
+## [member _changed_groups] to the mask of groups whose values changed, so a [method GSNetBehaviour._net_state_applied] can skip
+## the work of groups that did not move. Set it before the behaviour is registered (the native batch reads it when it holds the entity).
+var state_groups := PackedByteArray()
+
+## The groups ([member state_groups]) whose values the last read changed, as a bit mask; -1: unknown or all (a rewind, or no
+## groups). Valid inside [method GSNetBehaviour._net_state_applied].
+var _changed_groups: int = -1
+
+## Property -> group bit, built from [member state_groups] on first use.
+var _group_bits := {}
+
 ## GameSpice Sim's snapshot codec for this behaviour ([GSNetSimCodec]), or null for the GDScript one.
 var _sim_codec: Object = null
 var _config: GSNetConfig = null

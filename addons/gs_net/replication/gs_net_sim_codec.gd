@@ -116,6 +116,7 @@ static func read_state(
 			count = read + int(out[2])
 			behaviour._read_now.clear()
 			behaviour._read_changed = false
+			behaviour._changed_groups = 0 if not behaviour.state_groups.is_empty() else -1
 
 		for i in range(read):
 			behaviour._apply_read(net_vars[int(out[4 + 2 * i])], out[5 + 2 * i])

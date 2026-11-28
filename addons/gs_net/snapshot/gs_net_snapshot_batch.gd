@@ -15,6 +15,8 @@ var _never := {}
 var _args := PackedInt64Array([0, 0, 0, 0, 0])
 ## Whether the library takes a row's sixth element, [member GSNetBehaviour.state_applied_every_snapshot] (and skips unchanged hooks).
 var _always_rows := false
+## Whether the library takes a row's seventh element, [member GSNetBehaviour.state_groups], and writes [member GSNetBehaviour._changed_groups].
+var _group_rows := false
 ## The [member GSNetConfig.skip_unchanged_state_applied] the library was last given, so a change at run time (a cvar) reaches it.
 var _skip := false
 
@@ -34,6 +36,7 @@ static func create(config: GSNetConfig, interpolator: GSNetInterpolator) -> GSNe
 	if batch._always_rows:
 		batch._skip = config.skip_unchanged_state_applied
 		batch._native.set_skip_unchanged_hooks(batch._skip)
+	batch._group_rows = batch._always_rows and batch._native.has_method(&"takes_state_groups")
 	return batch
 
 
@@ -87,6 +90,10 @@ func hold(interpolator: GSNetInterpolator, identity: GSNetIdentity) -> void:
 		var row := [behaviour, codec, names, flags, behaviour.listens_state_applied()]
 		if _always_rows:
 			row.append(behaviour.state_applied_every_snapshot)
+			if _group_rows and not behaviour.state_groups.is_empty():
+				row.append(behaviour.state_groups)
+		# A library that cannot group leaves the mask at "all changed": the hook does all its work.
+		behaviour._changed_groups = -1
 		parts.append(row)
 
 	if not _native.register(net_id, parts, track):
