@@ -7,5 +7,8 @@ extends RefCounted
 # 18: GSNetInput.Buffer.push_batch(inputs), the lead measured per packet. 19: GSNetManager.snapshot_due(). 20: GSNetVar.Type.PACKED_FLOAT32 and of_length(count). 21: GSNetConfig.max_snapshot_parts. 22: GSNetIdentity.interest_aim and GSNetInterest.aim_cone_deg. 23: GSNetBehaviour.net_replaying.
 # 24: GSNetInterpolator.track_samples / newest_tick / has_track and GSNetConfig.sim_interp_tracks_only. 25: GSNetInterpolator.bind_mirror / unbind_mirror / mirror_count (a copy-only _net_interpolated done natively) and GSNetBehaviour.listens_state_applied() (a snapshot apply skips the inherited no-op _net_state_applied).
 # 26: GSNetConfig.skip_unchanged_state_applied (default on: _net_state_applied only when a read changed a value), GSNetBehaviour.state_applied_every_snapshot, GSNetSnapshotBatch.last_changed / hooks_skipped.
-const LEVEL := 26
+# 27: GSNetManager.set_native_core(core, note) / native_core() / native_note() (a game installs its own snapshot core).
+# 28: GSNetConfig.snapshot_clock_from_tick (the snapshot clock counts ticks, for hand-driven or compared servers).
+# 29: GSNetConfig.native_submit_batch (every peer's native interest submit in one GSSimNetCore.submit_peers_interest call).
+const LEVEL := 29
 const OLDEST := 1

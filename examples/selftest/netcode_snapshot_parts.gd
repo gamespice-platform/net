@@ -575,6 +575,9 @@ func _normal_view(view: Dictionary) -> Dictionary:
 
 ## [member GSNetConfig.native_reads] for the next [method _threads_scenario] runs; -1 keeps the default.
 var _scenario_native_reads := -1
+## True: [method _threads_scenario] makes the core itself and installs it with
+## [method GSNetManager.set_native_core], as a game with its own core does.
+var _scenario_install_core := false
 
 
 ## One run of [method _test_snapshot_threads]'s game; everything it sent and kept, as bytes.
@@ -592,6 +595,9 @@ func _threads_scenario(
 	host.config.native_interest = native_interest
 	if _scenario_native_reads >= 0:
 		host.config.native_reads = _scenario_native_reads
+	if _scenario_install_core and host.config.native:
+		var made := GSNetNative.make_core(host.config)
+		host.set_native_core(made.value if made.ok else null, "installed" if made.ok else "installed none")
 	# 1500 B per window of ten ticks (the window is scripted below): well under what the
 	# entities in view want, so the accumulator decides who waits.
 	host.config.per_client_budget = 1500
@@ -600,6 +606,15 @@ func _threads_scenario(
 	distance.evaluation_interval_sec = 0.0
 	host.interest = distance
 	host._test_skew_pooled = skew
+	# Every run compares bytes with another run, so lingering expires on the snapshot clock counted in
+	# ticks: on the wall clock a run slowed by a loaded machine let a leaver go ticks earlier (the
+	# "thin" and installed-core comparisons failed now and then on 4 extra entries).
+	host.config.snapshot_clock_from_tick = true
+	var tick_clock := variant == "tickclock"
+	if tick_clock:
+		# A cache that expires on the snapshot clock too: a run that stalls on the wall clock
+		# ("Slow") must send what one that does not sends.
+		distance.evaluation_interval_sec = 0.1
 	if variant == "thin":
 		distance.far_every = 3
 		distance.far_distance = 6.0
@@ -649,7 +664,7 @@ func _threads_scenario(
 		# The first ten are the peers' own (the observers interest measures from).
 		var owner := 2 + i if i < PEERS else 0
 		var spawned: GSNetIdentity = host.spawner.spawn(&"counted", owner, Transform3D.IDENTITY, 0).value
-		spawned.interest_linger_sec = 1.0e6 if rich else 0.0
+		spawned.interest_linger_sec = 1.0e6 if rich else 0.2 if tick_clock else 0.0
 		# Two always-relevant entities: the pinned path under a cache hit.
 		spawned.always_relevant = rich and i >= PEERS and i < PEERS + 2
 		if variant == "thin" and i < PEERS:
@@ -661,6 +676,8 @@ func _threads_scenario(
 	var starved := 0
 	var split := 0
 	for tick in range(1, TICKS + 1):
+		if tick_clock and label.ends_with("Slow"):
+			OS.delay_msec(7)
 		for i in behaviours.size():
 			var c := behaviours[i]
 			# A pure function of (entity, tick): a slow circle per entity, the peers' own
@@ -753,8 +770,8 @@ func _threads_scenario(
 		"payloads": payloads, "states": states, "peers_fed": peers_fed.size(),
 		"starved": starved, "split": split, "pooled": host._snapshot_pooled, "note": host._snapshot_threads_note,
 		"snapshots": TICKS, "cache_hits": 0, "normal_states": normal_states,
-		"native_note": host._native_note,
-		"interest_native": host._native != null and bool(host._native.call(&"describe").get("interest", false)),
+		"native_note": host.native_note(),
+		"interest_native": host.native_core() != null and bool(host._native.call(&"describe").get("interest", false)),
 		"read_mode": int(host._native.call(&"describe").get("read_mode", -1)) if host._native != null else -1,
 		"read_mismatches": int(host._native.call(&"describe").get("read_mismatches", 0)) if host._native != null else 0,
 	}

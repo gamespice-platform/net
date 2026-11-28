@@ -47,6 +47,8 @@ Two cases keep a property in every snapshot until the peer confirms its current 
 
 The window is not small: a quarter of a second of an entity that exists only by prediction, and on a host that ticks faster than the wall clock (every headless test, every fast-forwarded replay) the age never reaches the interval and the entity is never sent. It is hard to see because the owner's position looks right (it is predicting it); only what cannot be predicted (mass, health, a team change) goes silently missing. The pin returns a new dictionary: an entry written into the cache would survive the expiry meant to re-evaluate it.
 
+The cache, lingering and every `max_rate` read one clock per snapshot, the wall clock by default. `GSNetConfig.snapshot_clock_from_tick` (API 28) makes it `tick * 1000 / tick_rate` instead: two servers driven by hand and compared byte for byte (game-fatal-contact's `headless_native_snapshot_parity`) each expired a cache at whatever tick the wall clock crossed the interval on, so one peer got a full set of entities a few ticks before the other. netcode_demo's `snapshot_clock_from_tick` check stalls one run and compares the bytes.
+
 Interest management is also the anti-cheat that works: data never sent cannot be drawn on a wallhack. The built-in "all" strategy is correct for co-op and wrong for competitive.
 
 ## Visibility: the map's PVS

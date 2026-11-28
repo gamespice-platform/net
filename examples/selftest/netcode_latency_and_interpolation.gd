@@ -425,6 +425,7 @@ func _test_native() -> void:
 	_native_reads_match(loaded)
 	_native_interest_match(loaded)
 	_native_toggle_resends(loaded)
+	_native_installed_core(loaded)
 	_native_library_for_platform()
 
 
@@ -482,9 +483,11 @@ func _native_interest_match(loaded: bool) -> void:
 	for variant: String in ["", "coded", "thin", "cache", "held"]:
 		var serial: Dictionary = _threads_scenario("NativeInterest" + variant + "Off", 0, false, variant)
 		var name := variant if variant != "" else "base"
-		for run: Array in [["inline", 0], ["three workers", 3]]:
+		for run: Array in [["inline", 0, true], ["three workers", 3, true], ["per peer", 0, false]]:  # per peer: native_submit_batch off
+			GSNetConfig.native_submit_batch = run[2]
 			var other: Dictionary = _threads_scenario(
-				"NativeInterest%s%d" % [variant, run[1]], run[1], false, variant, true, true)
+				"NativeInterest%s%d%s" % [variant, run[1], "" if run[2] else "p"], run[1], false, variant, true, true)
+			GSNetConfig.native_submit_batch = true
 			_check("native interest %s, %s: the same entities and payloads %s and budgets %s as GDScript" % [
 					name, run[0], _first_difference(serial["payloads"], other["payloads"]),
 					_first_difference(serial["normal_states"], other["normal_states"])],
@@ -507,6 +510,28 @@ func _native_toggle_resends(loaded: bool) -> void:
 				_first_difference(forgot["payloads"], toggled["payloads"])],
 			not loaded or (_first_difference(forgot["payloads"], toggled["payloads"]) == ""
 				and _first_difference(forgot["normal_states"], toggled["normal_states"]) == ""))
+
+
+## A core the game made and installed with set_native_core sends what GDScript sends; null
+## hands snapshots back to GDScript, and the manager never makes a second core over either.
+func _native_installed_core(loaded: bool) -> void:
+	var serial: Dictionary = _threads_scenario("NativeInstalledOff", 0, false)
+	_scenario_install_core = true
+	var installed: Dictionary = _threads_scenario("NativeInstalledOn", 0, false, "", true)
+	_scenario_install_core = false
+	_check("native installed core: kept (%s) and the same payloads %s as GDScript" % [
+			installed["native_note"], _first_difference(serial["payloads"], installed["payloads"])],
+		str(installed["native_note"]) == ("installed" if loaded else "installed none")
+			and (serial["payloads"] as Array).size() > 100
+			and _first_difference(serial["payloads"], installed["payloads"]) == ""
+			and _first_difference(serial["normal_states"], installed["normal_states"]) == "")
+	var host := GSNetManager.new()
+	host.config = GSNetConfig.new()
+	host.config.native = true
+	host.set_native_core(null, "game said no")
+	var none_kept := host._native_for_snapshot() == null and not host.config.native
+	host.free()
+	_check("native installed core: null keeps snapshots in GDScript and config.native off", none_kept)
 
 
 func _native_library_for_platform() -> void:

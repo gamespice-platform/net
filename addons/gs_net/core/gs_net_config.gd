@@ -27,6 +27,12 @@ const MAX_SNAPSHOT_PARTS := 16
 ## with only bots, or a staggered phase nobody is on, sent nothing and paid for all of it. History is still recorded.
 @export var skip_idle_snapshots: bool = true
 
+## Runs the snapshot clock (interest's cache and linger, every [member GSNetVar.max_rate]) on the tick,
+## [code]tick * 1000 / tick_rate[/code] ms, instead of the wall clock. Off: a live server's linger is wall
+## time. On for a harness that drives servers by hand faster or slower than real time, or two servers
+## whose bytes are compared: on the wall clock each expired a cache at a different tick (API 28).
+@export var snapshot_clock_from_tick: bool = false
+
 ## Whether peers in step share one dirty set per entity per snapshot ([method
 ## GSNetBehaviour.collect_dirty]).
 @export var share_dirty_sets: bool = true
@@ -50,6 +56,11 @@ const MAX_SNAPSHOT_PARTS := 16
 ## the library: the same bytes, a third of the tick at 100 clients. Ignored for any other strategy.
 ## Environment [code]GS_NET_NATIVE_INTEREST=0[/code] or [code]--net-native-interest=false[/code] turns it off.
 @export var native_interest: bool = true
+
+## With [member native_interest], every peer of a snapshot goes to the core in one [code]submit_peers_interest[/code]
+## call, not one per peer: same jobs, same order, same bytes. False, or a core without it, submits per peer.
+## One switch for the process (a game's cvar writes it), read once per snapshot. (API 29.)
+static var native_submit_batch := true
 
 ## How the native core reads each behaviour's values when a snapshot opens: [code]1[/code] in the library, [code]0[/code] through [code]GSNetBehaviour._native_values[/code], [code]2[/code] both, counting a difference as [code]read_mismatches[/code] in [code]describe()[/code] and sending GDScript's values. Same bytes either way.
 ## Environment [code]GS_NET_NATIVE_READS[/code], command line [code]--net-native-reads[/code].

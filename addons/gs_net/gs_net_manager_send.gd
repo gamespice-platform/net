@@ -16,7 +16,7 @@ func _send_snapshots(
 	# The clock read once for the whole snapshot, for interest's cache and every rate limit:
 	# read per peer, two peers either side of a millisecond could be answered differently in
 	# one snapshot, and a snapshot built on workers could not be compared with one built here.
-	var now_ms := Time.get_ticks_msec()
+	var now_ms := tick * 1000 / config.tick_rate if config.snapshot_clock_from_tick else Time.get_ticks_msec()
 	var context := {"tick": tick, "config": config, "now_ms": now_ms}
 	var prep_started := Time.get_ticks_usec()
 
@@ -187,6 +187,32 @@ func _native_for_snapshot() -> Object:
 	return _native
 
 
+## Installs a snapshot core a game made itself (another library's, with the same methods as
+## [GSNetNative]'s), or with [param core] null keeps snapshots in GDScript; [param note] is what
+## [method describe_lines] shows. Sets [member GSNetConfig.native] to match, so the manager does
+## not make its own core over this one. Send records are reset only when the core changes,
+## since each path keeps its own acks.
+func set_native_core(core: Object, note: String) -> void:
+	if config != null:
+		config.native = core != null
+	if core != _native:
+		_reset_send_views()
+	_native = core
+	_native_tried = true
+	_native_note = note
+
+
+## The native snapshot core in use, or null while snapshots are built in GDScript.
+func native_core() -> Object:
+	return _native
+
+
+## What happened to the native core ("on (...)", "off", why GDScript is in use), "" before the
+## first snapshot asked for one.
+func native_note() -> String:
+	return _native_note
+
+
 ## Every behaviour's send records dropped, GDScript's and the native core's hold on them: each
 ## path keeps its own acks, so after a switch the other's are stale and everything is resent.
 func _reset_send_views() -> void:
@@ -294,8 +320,7 @@ func _send_snapshots_native(
 
 	var submit_started := Time.get_ticks_usec()
 	_snapshot_interest_usec_total += submit_started - interest_started
-	for job in jobs:
-		_submit_native(core, job, core_interest)
+	_submit_native_all(core, jobs, core_interest)
 	var started := Time.get_ticks_usec()
 	_snapshot_submit_usec_total += started - submit_started
 	var applied := 0
@@ -327,25 +352,60 @@ func _send_snapshots_native(
 	return applied
 
 
-## Queues one peer's build in the native core (built at once without workers).
-func _submit_native(core: Object, job: SnapshotJob, core_interest: bool) -> void:
-	var info := PackedInt64Array([
+## Queues every peer's build in the native core, in [param jobs]' order: in one
+## [code]submit_peers_interest[/code] call when the core interest runs, [member GSNetConfig.native_submit_batch]
+## is on and the core has it; otherwise one call per peer. The same jobs either way, so the same bytes.
+func _submit_native_all(core: Object, jobs: Array[SnapshotJob], core_interest: bool) -> void:
+	if not (core_interest and GSNetConfig.native_submit_batch and core.has_method(&"submit_peers_interest")):
+		for job in jobs:
+			_submit_native(core, job, core_interest)
+		return
+	var observers: Array = []
+	var accumulators: Array = []
+	var starved: Array = []
+	var infos := PackedInt64Array()
+	for job in jobs:
+		var info := _interest_info(core, job)
+		infos.append(info.size())
+		infos.append_array(info)
+		observers.append(job.observer)
+		accumulators.append(job.peer_budget.accumulators)
+		starved.append(job.peer_budget.starved_ticks)
+	var queued: int = core.submit_peers_interest(observers, infos, accumulators, starved)
+	if queued != jobs.size():
+		GSLog.error(CHANNEL, "the native core queued fewer peers than submitted", {
+			"queued": queued, "peers": jobs.size()})
+
+
+## One peer's [code]submit_peer_interest[/code] info. The core keeps the budget from one snapshot to the
+## next and loads it from the two dictionaries only when it does not hold it already; for_peer writes it back.
+func _interest_info(core: Object, job: SnapshotJob) -> PackedInt64Array:
+	var info := _native_info(job)
+	var peer_budget := job.peer_budget
+	var fresh := peer_budget._native != core
+	if fresh and peer_budget._native != null:
+		budget.for_peer(job.peer_id)
+	peer_budget._native = core
+	info.append(1 if fresh else 0)
+	_append_ring(info, job.acked_ring)
+	return info
+
+
+func _native_info(job: SnapshotJob) -> PackedInt64Array:
+	return PackedInt64Array([
 		job.peer_id, job.acked_tick, 1 if job.strict else 0, 1 if job.compact else 0,
 		job.remaining_bytes, 1 if job.send_lead else 0, job.lead.x, job.lead.y,
 	])
+
+
+## Queues one peer's build in the native core (built at once without workers).
+func _submit_native(core: Object, job: SnapshotJob, core_interest: bool) -> void:
 	if core_interest:
-		# The core keeps the budget from one snapshot to the next and loads it from the two
-		# dictionaries only when it does not hold it already; for_peer writes it back.
 		var peer_budget := job.peer_budget
-		var fresh := peer_budget._native != core
-		if fresh and peer_budget._native != null:
-			budget.for_peer(job.peer_id)
-		peer_budget._native = core
-		info.append(1 if fresh else 0)
-		_append_ring(info, job.acked_ring)
-		core.submit_peer_interest(job.observer, info,
+		core.submit_peer_interest(job.observer, _interest_info(core, job),
 			peer_budget.accumulators, peer_budget.starved_ticks)
 	else:
+		var info := _native_info(job)
 		_append_ring(info, job.acked_ring)
 		core.submit_peer(job.ordered, info,
 			job.peer_budget.accumulators, job.peer_budget.starved_ticks)
