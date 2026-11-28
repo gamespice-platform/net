@@ -19,6 +19,11 @@ signal unregistered(net_id: int, identity: GSNetIdentity)
 ## net_id -> GSNetIdentity
 var _by_id: Dictionary = {}
 
+## [method all]'s list, rebuilt (a new array, never changed in place) only after [member _by_id] changed or a member
+## was freed, so a caller walking an older one is not disturbed. Several walks a frame (send, ack, interpolation).
+var _all: Array[GSNetIdentity] = []
+var _all_dirty := true
+
 ## peer_id -> Array[int] of net_ids they own.
 var _by_owner: Dictionary = {}
 
@@ -106,6 +111,7 @@ func register(
 		_next_id = assigned + 1
 
 	_by_id[assigned] = identity
+	_all_dirty = true
 
 	if not _by_owner.has(identity.owner_peer_id):
 		_by_owner[identity.owner_peer_id] = []
@@ -135,6 +141,7 @@ func unregister(net_id: int) -> GSResult:
 
 	if not is_instance_valid(stored):
 		_by_id.erase(net_id)
+		_all_dirty = true
 		for owner_id in _by_owner:
 			(_by_owner[owner_id] as Array).erase(net_id)
 		_remember_removed(net_id)
@@ -144,6 +151,7 @@ func unregister(net_id: int) -> GSResult:
 	var identity: GSNetIdentity = stored
 
 	_by_id.erase(net_id)
+	_all_dirty = true
 
 	if _by_owner.has(identity.owner_peer_id):
 		(_by_owner[identity.owner_peer_id] as Array).erase(net_id)
@@ -206,6 +214,7 @@ func get_identity(net_id: int) -> GSNetIdentity:
 	# reference. Cleaning up here keeps a missed despawn from becoming a crash.
 	if identity != null and not is_instance_valid(identity):
 		_by_id.erase(net_id)
+		_all_dirty = true
 		return null
 	return identity
 
@@ -214,8 +223,19 @@ func has(net_id: int) -> bool:
 	return get_identity(net_id) != null
 
 
-## Every identity still worth walking, and the freed ones dropped as they are found.
+## Every identity still worth walking, and the freed ones dropped as they are found. The same array until the registry
+## changes: read it, do not change it.
 func all() -> Array[GSNetIdentity]:
+	if not _all_dirty:
+		var whole := true
+		for i in _all.size():
+			# Untyped, as below: a freed member must not fail the read itself.
+			var held: Variant = _all[i]
+			if not is_instance_valid(held):
+				whole = false
+				break
+		if whole:
+			return _all
 	var out: Array[GSNetIdentity] = []
 	var stale: Array[int] = []
 
@@ -231,10 +251,13 @@ func all() -> Array[GSNetIdentity]:
 
 	for net_id in stale:
 		_by_id.erase(net_id)
+		_all_dirty = true
 		GSLog.debug(CHANNEL, "dropped an entity that was freed without being unregistered", {
 			"net_id": net_id,
 		})
 
+	_all = out
+	_all_dirty = false
 	return out
 
 
@@ -303,6 +326,7 @@ func clear() -> void:
 	for net_id in _by_id.keys():
 		unregister(net_id)
 	_by_id.clear()
+	_all_dirty = true
 	_by_owner.clear()
 	_recently_removed.clear()
 

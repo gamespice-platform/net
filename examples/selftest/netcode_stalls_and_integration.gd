@@ -464,11 +464,16 @@ func _test_freed_entity() -> void:
 	registry.register(kept, 0, 1, config)
 	registry.register(freed, 0, 1, config)
 	var freed_id := freed.net_id
+	var walked := registry.all()
+	_check("all() hands back the same list while nothing changed (no array a frame)", registry.all() == walked and is_same(registry.all(), walked))
 	freed.get_parent().free()
 
 	var errors := EngineErrors.new()
 	OS.add_logger(errors)
 	var dropped := registry.unregister(freed_id)
+	var after_free := registry.all()
+	_check("after an unregister, a new list without it; the old one untouched (%d, %d)" % [after_free.size(), walked.size()],
+		not is_same(after_free, walked) and after_free.size() == 1 and after_free[0] == kept and walked.size() == 2)
 	registry.clear()
 	OS.remove_logger(errors)
 
