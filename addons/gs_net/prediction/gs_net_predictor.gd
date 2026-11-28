@@ -80,10 +80,13 @@ func predict(
 func _remember(identity: GSNetIdentity, tick: int) -> void:
 	if not config.skip_matching_replays or not config.reconcile_once_per_frame:
 		return
+	# Only what [method _predicted_matches] compares: a property the client does not predict was read,
+	# stored and never looked at again, which was most of a player's declarations every predicted tick.
 	var values := {}
-	for behaviour in identity.behaviours:
-		for declaration in behaviour.net_vars:
-			values[declaration.property] = behaviour._net_read_property(declaration.property)
+	for behaviour: GSNetBehaviour in identity.behaviours:
+		for declaration: GSNetVar in behaviour.net_vars:
+			if declaration.client_predicts:
+				values[declaration.property] = behaviour._net_read_property(declaration.property)
 	var ticks: Dictionary = _predicted.get(identity.net_id, {})
 	if ticks.is_empty():
 		_predicted[identity.net_id] = ticks
