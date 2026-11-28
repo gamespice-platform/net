@@ -273,6 +273,14 @@ func _input_batches_server_half(buffer: GSNetInput.Buffer, writer: GSNetWriter, 
 	_check("so a host skips the stale copies instead of counting them late",
 		pushed == 1 and server.late_count == 0 and server.duplicate_count == 1,
 		)
+	# Past capacity the oldest unconsumed input is dropped, and counted (API 27).
+	var small := GSNetInput.Buffer.new(2)
+	for t in [20, 21, 22]:
+		var over := DemoInput.new()
+		over.tick = t
+		small.push(over)
+	_check("an input dropped past capacity is counted as overflow",
+		small.overflow_count == 1 and small.describe().get("overflow", -1) == 1 and small.take(20) == null)
 	# Lost packet, next one arrives: the lost tick is there before it is due.
 	var lost_then := GSNetInput.Buffer.new(32)
 	var batch_15 := buffer.recent(3, 15)

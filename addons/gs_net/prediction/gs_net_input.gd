@@ -168,6 +168,10 @@ class Buffer extends RefCounted:
 	## Inputs discarded for duplicating one already held.
 	var duplicate_count: int = 0
 
+	## Inputs dropped unconsumed, oldest first, because the buffer held more than [member capacity]
+	## (API 27). Each one is a tick whose command, trigger included, the server never simulated.
+	var overflow_count: int = 0
+
 	## Server side: the newest input tick ever offered to [method push], late ones included.
 	var _newest_tick: int = -1
 
@@ -240,6 +244,7 @@ class Buffer extends RefCounted:
 
 		while _inputs.size() > capacity:
 			_inputs.pop_front()
+			overflow_count += 1
 
 		return GSResult.success(true)
 
@@ -360,4 +365,5 @@ class Buffer extends RefCounted:
 			"starved": starved_count,
 			"late": late_count,
 			"duplicates": duplicate_count,
+			"overflow": overflow_count,
 		}
